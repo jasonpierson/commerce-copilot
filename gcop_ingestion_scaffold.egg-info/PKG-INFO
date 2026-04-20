@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: gcop-ingestion-scaffold
+Version: 0.1.0
+Summary: Ingestion scaffold for the Governed Commerce Operations Copilot corpus
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: psycopg[binary]>=3.2
+
+Refactored retrieval evaluation layout
+
+app/retrieval/evals/
+  __init__.py
+  evaluator.py
+  retrieval_eval_set.jsonl
+scripts/
+  run_retrieval_eval.py
+
+Usage:
+  python scripts/run_retrieval_eval.py --mode stub
+  python scripts/run_retrieval_eval.py --mode adapter
