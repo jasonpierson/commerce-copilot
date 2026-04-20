@@ -10,6 +10,34 @@ def stable_uuid(kind: str, key: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"gcop:{kind}:{key}"))
 
 
+USERS = [
+    {
+        "email": "support.analyst@demo.local",
+        "full_name": "Morgan Support",
+        "role": "support_analyst",
+        "is_active": True,
+    },
+    {
+        "email": "eng.support@demo.local",
+        "full_name": "Alex Kim",
+        "role": "engineering_support",
+        "is_active": True,
+    },
+    {
+        "email": "ops.manager@demo.local",
+        "full_name": "Dana Lee",
+        "role": "ops_manager",
+        "is_active": True,
+    },
+    {
+        "email": "admin@demo.local",
+        "full_name": "Jordan Admin",
+        "role": "admin",
+        "is_active": True,
+    },
+]
+
+
 PRODUCTS = [
     {
         "sku": "PX-100",
@@ -161,6 +189,31 @@ INCIDENT_EVENTS = [
     ("INC-1091", "2026-04-19T16:17:00Z", "mitigation_started", "Sam Rivera", "Traffic shifted to the backup authorization route for high-failure card types."),
     ("INC-1091", "2026-04-19T16:31:00Z", "customer_impact_updated", "Casey Nguyen", "Support guidance refreshed with retry limits and payment-workaround messaging."),
 ]
+
+
+def upsert_users(conn) -> None:
+    sql = """
+    insert into public.users (
+        id,
+        email,
+        full_name,
+        role,
+        is_active
+    ) values (
+        %(id)s,
+        %(email)s,
+        %(full_name)s,
+        %(role)s,
+        %(is_active)s
+    )
+    on conflict (email) do update set
+        full_name = excluded.full_name,
+        role = excluded.role,
+        is_active = excluded.is_active
+    """
+    with conn.cursor() as cur:
+        for row in USERS:
+            cur.execute(sql, {"id": stable_uuid("user", row["email"]), **row})
 
 
 def upsert_products(conn) -> None:
@@ -350,6 +403,7 @@ def upsert_incident_events(conn) -> None:
 def main() -> None:
     require_dsn()
     with connect() as conn:
+        upsert_users(conn)
         upsert_products(conn)
         upsert_locations(conn)
         upsert_inventory(conn)
@@ -357,7 +411,8 @@ def main() -> None:
         upsert_incident_events(conn)
         conn.commit()
 
-    print("Seeded products, locations, inventory, incidents, and incident_events.")
+    print("Seeded users, products, locations, inventory, incidents, and incident_events.")
+    print(f"- users: {len(USERS)}")
     print(f"- products: {len(PRODUCTS)}")
     print(f"- locations: {len(LOCATIONS)}")
     print(f"- inventory rows: {len(INVENTORY)}")

@@ -18,6 +18,10 @@ SupportedUserRole = Literal[
     "ops_manager",
     "admin",
 ]
+ApproverUserRole = Literal["ops_manager", "admin"]
+ApprovalStatusValue = Literal["pending", "approved", "rejected"]
+ApprovalDecisionValue = Literal["approved", "rejected"]
+EscalationPriority = Literal["medium", "high", "critical"]
 
 
 class QueryRequest(BaseModel):
@@ -108,3 +112,82 @@ class ErrorResponse(BaseModel):
     request_id: str
     status: Literal["error"] = "error"
     error: ErrorDetail
+
+
+class UserSummary(BaseModel):
+    user_id: str
+    full_name: str
+    role: SupportedUserRole
+    email: str | None = None
+
+
+class IncidentDetailData(BaseModel):
+    incident: IncidentRecord
+    incident_timeline: list[IncidentEvent] = Field(default_factory=list)
+
+
+class IncidentDetailResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["incident_detail"] = "incident_detail"
+    data: IncidentDetailData
+    meta: QueryResponseMeta
+
+
+class CreateEscalationRequest(BaseModel):
+    incident_code: str = Field(min_length=1)
+    escalation_reason: str = Field(min_length=1)
+    proposed_priority: EscalationPriority
+    draft_summary: str = Field(min_length=1)
+    requested_by_user_id: str = Field(default="demo-support-001")
+    requested_by_role: SupportedUserRole = Field(default="support_analyst")
+
+
+class ApprovalDecisionRequest(BaseModel):
+    decision: ApprovalDecisionValue
+    decision_notes: str | None = None
+    decider_user_id: str = Field(default="demo-ops-manager-001")
+    decider_role: ApproverUserRole = Field(default="ops_manager")
+
+
+class ApprovalRecord(BaseModel):
+    approval_id: str
+    status: ApprovalStatusValue
+    request_type: str
+    target_type: str
+    target_id: str
+    requested_at: datetime
+    decided_at: datetime | None = None
+    decision_notes: str | None = None
+    next_step: str | None = None
+    requester: UserSummary | None = None
+    approver: UserSummary | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ApprovalData(BaseModel):
+    approval: ApprovalRecord
+
+
+class ApprovalRequestResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["approval_request"] = "approval_request"
+    data: ApprovalData
+    meta: QueryResponseMeta
+
+
+class ApprovalStatusResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["approval_status"] = "approval_status"
+    data: ApprovalData
+    meta: QueryResponseMeta
+
+
+class ApprovalDecisionResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["approval_decision"] = "approval_decision"
+    data: ApprovalData
+    meta: QueryResponseMeta

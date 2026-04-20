@@ -1,0 +1,365 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+import json
+from uuid import uuid4
+
+from app.api.db import connect, require_dsn
+from app.api.schemas import (
+    ApprovalRecord,
+    ApprovalStatusValue,
+    ApproverUserRole,
+    SupportedUserRole,
+    UserSummary,
+)
+
+
+class ApprovalNotFoundError(Exception):
+    pass
+
+
+class ApprovalPermissionError(Exception):
+    pass
+
+
+class ApprovalConflictError(Exception):
+    pass
+
+
+class ApprovalValidationError(Exception):
+    pass
+
+
+@dataclass(slots=True)
+class ApprovalService:
+    dsn: str
+
+    @classmethod
+    def from_env(cls) -> "ApprovalService":
+        return cls(dsn=require_dsn())
+
+    def _row_to_user(self, row, prefix: str) -> UserSummary | None:
+        user_id = row.get(f"{prefix}_user_id")
+        if not user_id:
+            return None
+
+        return UserSummary(
+            user_id=user_id,
+            full_name=row.get(f"{prefix}_full_name") or "Unknown User",
+            role=row.get(f"{prefix}_role") or "support_analyst",
+            email=row.get(f"{prefix}_email"),
+        )
+
+    def _next_step_for_status(self, status: ApprovalStatusValue) -> str:
+        if status == "pending":
+            return "Awaiting approver decision."
+        if status == "approved":
+            return "Approval granted. The escalation can now be executed by the workflow owner."
+        return "Approval rejected. Review the decision notes and revise the request if needed."
+
+    def _fetch_user_by_role(self, role: SupportedUserRole) -> UserSummary | None:
+        sql = """
+        select
+            id::text as user_id,
+            full_name,
+            role,
+            email
+        from public.users
+        where role = %(role)s
+          and is_active = true
+        order by created_at asc
+        limit 1
+        """
+        with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {"role": role})
+                row = cur.fetchone()
+
+        if not row:
+            return None
+
+        return UserSummary(**row)
+
+    def _resolve_user(self, user_id: str | None, fallback_role: SupportedUserRole) -> UserSummary:
+        row = None
+        if user_id:
+            sql = """
+            select
+                id::text as user_id,
+                full_name,
+                role,
+                email
+            from public.users
+            where id::text = %(user_id)s
+               or lower(email) = lower(%(user_id)s)
+            limit 1
+            """
+            with connect(self.dsn) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, {"user_id": user_id.strip()})
+                    row = cur.fetchone()
+
+        if row:
+            return UserSummary(**row)
+
+        fallback = self._fetch_user_by_role(fallback_role)
+        if fallback:
+            return fallback
+
+        raise ApprovalValidationError(
+            f"No active user record is available for role '{fallback_role}'."
+        )
+
+    def _resolve_approver(self, preferred_roles: tuple[ApproverUserRole, ...]) -> UserSummary:
+        for role in preferred_roles:
+            approver = self._fetch_user_by_role(role)
+            if approver:
+                return approver
+
+        raise ApprovalValidationError(
+            "No active approver is available. Seed an ops manager or admin user first."
+        )
+
+    def _log_audit_event(
+        self,
+        *,
+        event_type: str,
+        user_id: str | None,
+        request_id: str,
+        route_type: str,
+        tool_name: str,
+        target_type: str,
+        target_id: str,
+        payload: dict,
+    ) -> None:
+        sql = """
+        insert into public.audit_events (
+            id,
+            event_type,
+            user_id,
+            request_id,
+            route_type,
+            tool_name,
+            target_type,
+            target_id,
+            event_payload_json
+        ) values (
+            %(id)s::uuid,
+            %(event_type)s,
+            %(user_id)s::uuid,
+            %(request_id)s,
+            %(route_type)s,
+            %(tool_name)s,
+            %(target_type)s,
+            %(target_id)s,
+            %(event_payload_json)s::jsonb
+        )
+        """
+        try:
+            with connect(self.dsn) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        sql,
+                        {
+                            "id": str(uuid4()),
+                            "event_type": event_type,
+                            "user_id": user_id,
+                            "request_id": request_id,
+                            "route_type": route_type,
+                            "tool_name": tool_name,
+                            "target_type": target_type,
+                            "target_id": target_id,
+                            "event_payload_json": json.dumps(payload),
+                        },
+                    )
+                conn.commit()
+        except Exception:
+            # Audit writes are best-effort in this scaffold.
+            return
+
+    def _map_approval_row(self, row) -> ApprovalRecord:
+        return ApprovalRecord(
+            approval_id=row["approval_id"],
+            status=row["status"],
+            request_type=row["request_type"],
+            target_type=row["target_type"],
+            target_id=row["target_id"],
+            requested_at=row["requested_at"],
+            decided_at=row.get("decided_at"),
+            decision_notes=row.get("decision_notes"),
+            next_step=self._next_step_for_status(row["status"]),
+            requester=self._row_to_user(row, "requester"),
+            approver=self._row_to_user(row, "approver"),
+            payload=row.get("payload") or {},
+        )
+
+    def get_approval_status(self, approval_id: str) -> ApprovalRecord:
+        sql = """
+        select
+            a.id::text as approval_id,
+            a.status,
+            a.request_type,
+            a.target_type,
+            a.target_id,
+            a.requested_at,
+            a.decided_at,
+            a.decision_notes,
+            a.payload_json as payload,
+            requester.id::text as requester_user_id,
+            requester.full_name as requester_full_name,
+            requester.role as requester_role,
+            requester.email as requester_email,
+            approver.id::text as approver_user_id,
+            approver.full_name as approver_full_name,
+            approver.role as approver_role,
+            approver.email as approver_email
+        from public.approvals a
+        left join public.users requester
+          on requester.id = a.requested_by_user_id
+        left join public.users approver
+          on approver.id = a.approver_user_id
+        where a.id::text = %(approval_id)s
+        limit 1
+        """
+        with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {"approval_id": approval_id})
+                row = cur.fetchone()
+
+        if not row:
+            raise ApprovalNotFoundError(f"Approval {approval_id} was not found.")
+
+        return self._map_approval_row(row)
+
+    def create_incident_escalation_request(
+        self,
+        *,
+        incident_id: str,
+        incident_code: str,
+        requested_by_user_id: str,
+        requested_by_role: SupportedUserRole,
+        escalation_reason: str,
+        proposed_priority: str,
+        draft_summary: str,
+        request_id: str,
+    ) -> ApprovalRecord:
+        requester = self._resolve_user(requested_by_user_id, requested_by_role)
+        approver = self._resolve_approver(("ops_manager", "admin"))
+
+        sql = """
+        insert into public.approvals (
+            id,
+            request_type,
+            target_type,
+            target_id,
+            requested_by_user_id,
+            approver_user_id,
+            status,
+            payload_json
+        ) values (
+            %(id)s::uuid,
+            'incident_escalation',
+            'incident',
+            %(target_id)s,
+            %(requested_by_user_id)s::uuid,
+            %(approver_user_id)s::uuid,
+            'pending',
+            %(payload_json)s::jsonb
+        )
+        """
+        approval_id = str(uuid4())
+        payload = {
+            "incident_code": incident_code,
+            "escalation_reason": escalation_reason,
+            "proposed_priority": proposed_priority,
+            "draft_summary": draft_summary,
+        }
+
+        with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {
+                        "id": approval_id,
+                        "target_id": incident_id,
+                        "requested_by_user_id": requester.user_id,
+                        "approver_user_id": approver.user_id,
+                        "payload_json": json.dumps(payload),
+                    },
+                )
+            conn.commit()
+
+        self._log_audit_event(
+            event_type="approval_requested",
+            user_id=requester.user_id,
+            request_id=request_id,
+            route_type="approval_request",
+            tool_name="create_incident_escalation_request",
+            target_type="incident",
+            target_id=incident_id,
+            payload=payload,
+        )
+
+        return self.get_approval_status(approval_id)
+
+    def decide_approval(
+        self,
+        *,
+        approval_id: str,
+        decider_user_id: str,
+        decider_role: ApproverUserRole,
+        decision: str,
+        decision_notes: str | None,
+        request_id: str,
+    ) -> ApprovalRecord:
+        if decider_role not in {"ops_manager", "admin"}:
+            raise ApprovalPermissionError("Only ops managers or admins may decide approvals.")
+
+        decider = self._resolve_user(decider_user_id, decider_role)
+        approval = self.get_approval_status(approval_id)
+        if approval.status != "pending":
+            raise ApprovalConflictError(
+                f"Approval {approval_id} is already {approval.status} and cannot be decided again."
+            )
+
+        sql = """
+        update public.approvals
+        set
+            approver_user_id = %(approver_user_id)s::uuid,
+            status = %(status)s,
+            decision_notes = %(decision_notes)s,
+            decided_at = %(decided_at)s
+        where id::text = %(approval_id)s
+        """
+        decided_at = datetime.now(UTC)
+        with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {
+                        "approval_id": approval_id,
+                        "approver_user_id": decider.user_id,
+                        "status": decision,
+                        "decision_notes": decision_notes,
+                        "decided_at": decided_at,
+                    },
+                )
+            conn.commit()
+
+        self._log_audit_event(
+            event_type="approval_decided",
+            user_id=decider.user_id,
+            request_id=request_id,
+            route_type="approval_decision",
+            tool_name="decide_approval",
+            target_type=approval.target_type,
+            target_id=approval.target_id,
+            payload={
+                "approval_id": approval_id,
+                "decision": decision,
+                "decision_notes": decision_notes,
+            },
+        )
+
+        return self.get_approval_status(approval_id)
