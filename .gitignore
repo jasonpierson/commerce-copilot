@@ -1,4 +1,5 @@
-.vscode/launch.json
+.vscode/
 .env.local
 ai-handoff.md
 ChatGPT-Development.md
+.DS_Store
