@@ -99,6 +99,7 @@ class QueryResponseData(BaseModel):
     inventory_results: list[InventoryResult] = Field(default_factory=list)
     approval: ApprovalRecord | None = None
     approvals: list[ApprovalRecord] = Field(default_factory=list)
+    approval_dashboard: list["ApprovalDashboardBucket"] = Field(default_factory=list)
     approval_audit: list["ApprovalAuditEvent"] = Field(default_factory=list)
     incident: IncidentRecord | None = None
     incident_timeline: list[IncidentEvent] = Field(default_factory=list)
@@ -209,6 +210,25 @@ class ApprovalAuditData(BaseModel):
 
 class ApprovalListData(BaseModel):
     approvals: list[ApprovalRecord] = Field(default_factory=list)
+    total_count: int = 0
+    page: int = 1
+    page_size: int = 20
+    sort_by: Literal["requested_at", "decided_at", "status"] = "requested_at"
+    sort_order: Literal["asc", "desc"] = "desc"
+    status_filter: ApprovalStatusValue | None = None
+    incident_code_filter: str | None = None
+
+
+class ApprovalDashboardBucket(BaseModel):
+    status: ApprovalStatusValue
+    count: int = 0
+    approvals: list[ApprovalRecord] = Field(default_factory=list)
+
+
+class ApprovalDashboardData(BaseModel):
+    buckets: list[ApprovalDashboardBucket] = Field(default_factory=list)
+    total_count: int = 0
+    page_size_per_bucket: int = 5
 
 
 class ApprovalRequestResponse(BaseModel):
@@ -248,4 +268,12 @@ class ApprovalListResponse(BaseModel):
     status: Literal["success"] = "success"
     route_type: Literal["approval_list"] = "approval_list"
     data: ApprovalListData
+    meta: QueryResponseMeta
+
+
+class ApprovalDashboardResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["approval_dashboard"] = "approval_dashboard"
+    data: ApprovalDashboardData
     meta: QueryResponseMeta

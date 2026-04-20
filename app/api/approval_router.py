@@ -15,6 +15,8 @@ from app.api.approval_service import (
 from app.api.incident_service import IncidentService
 from app.api.schemas import (
     ApprovalAuditData,
+    ApprovalDashboardData,
+    ApprovalDashboardResponse,
     ApprovalListData,
     ApprovalListResponse,
     ApprovalAuditResponse,
@@ -117,6 +119,101 @@ def create_incident_escalation(
 
 
 @router.get(
+    "/approvals",
+    response_model=ApprovalListResponse,
+    responses={
+        502: {"model": ErrorResponse},
+    },
+)
+def list_approvals(
+    approval_status: str | None = Query(default=None, alias="status", pattern="^(pending|approved|rejected)$"),
+    incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
+    page: int = Query(default=1, ge=1, le=1000),
+    page_size: int = Query(default=20, ge=1, le=100),
+    sort_by: str = Query(default="requested_at", pattern="^(requested_at|decided_at|status)$"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
+) -> ApprovalListResponse | JSONResponse:
+    request_id = f"req_{uuid4().hex[:12]}"
+    try:
+        approvals, total_count = ApprovalService.from_env().list_approvals(
+            status=approval_status,
+            incident_code=incident_code,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        tool_name = "list_approvals"
+        if approval_status:
+            tool_name = f"{tool_name}:{approval_status}"
+        return ApprovalListResponse(
+            request_id=request_id,
+            data=ApprovalListData(
+                approvals=approvals,
+                total_count=total_count,
+                page=page,
+                page_size=page_size,
+                sort_by=sort_by,
+                sort_order=sort_order,
+                status_filter=approval_status,
+                incident_code_filter=incident_code,
+            ),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=[tool_name],
+                approval_involved=bool(approvals),
+            ),
+        )
+    except Exception as exc:
+        return _error_response(
+            request_id=request_id,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="APPROVAL_LIST_FAILED",
+            message="The backend could not load approval work items.",
+            details={"cause": type(exc).__name__},
+        )
+
+
+@router.get(
+    "/approvals/dashboard",
+    response_model=ApprovalDashboardResponse,
+    responses={
+        502: {"model": ErrorResponse},
+    },
+)
+def get_approval_dashboard(
+    page_size_per_bucket: int = Query(default=5, ge=1, le=25),
+) -> ApprovalDashboardResponse | JSONResponse:
+    request_id = f"req_{uuid4().hex[:12]}"
+    try:
+        buckets = ApprovalService.from_env().get_approval_dashboard(
+            page_size_per_bucket=page_size_per_bucket
+        )
+        total_count = sum(bucket.count for bucket in buckets)
+        return ApprovalDashboardResponse(
+            request_id=request_id,
+            data=ApprovalDashboardData(
+                buckets=buckets,
+                total_count=total_count,
+                page_size_per_bucket=page_size_per_bucket,
+            ),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=["get_approval_dashboard"],
+                approval_involved=total_count > 0,
+            ),
+        )
+    except Exception as exc:
+        return _error_response(
+            request_id=request_id,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="APPROVAL_DASHBOARD_FAILED",
+            message="The backend could not load the approval dashboard.",
+            details={"cause": type(exc).__name__},
+        )
+
+
+@router.get(
     "/approvals/{approval_id}",
     response_model=ApprovalStatusResponse,
     responses={
@@ -150,42 +247,6 @@ def get_approval_status(approval_id: str) -> ApprovalStatusResponse | JSONRespon
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="APPROVAL_STATUS_FAILED",
             message="The backend could not load the approval status.",
-            details={"cause": type(exc).__name__},
-        )
-
-
-@router.get(
-    "/approvals",
-    response_model=ApprovalListResponse,
-    responses={
-        502: {"model": ErrorResponse},
-    },
-)
-def list_approvals(
-    approval_status: str | None = Query(default=None, alias="status", pattern="^(pending|approved|rejected)$"),
-    limit: int = Query(default=20, ge=1, le=100),
-) -> ApprovalListResponse | JSONResponse:
-    request_id = f"req_{uuid4().hex[:12]}"
-    try:
-        approvals = ApprovalService.from_env().list_approvals(status=approval_status, limit=limit)
-        tool_name = "list_approvals"
-        if approval_status:
-            tool_name = f"{tool_name}:{approval_status}"
-        return ApprovalListResponse(
-            request_id=request_id,
-            data=ApprovalListData(approvals=approvals),
-            meta=QueryResponseMeta(
-                citations_included=False,
-                tools_used=[tool_name],
-                approval_involved=bool(approvals),
-            ),
-        )
-    except Exception as exc:
-        return _error_response(
-            request_id=request_id,
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            code="APPROVAL_LIST_FAILED",
-            message="The backend could not load approval work items.",
             details={"cause": type(exc).__name__},
         )
 

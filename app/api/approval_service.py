@@ -8,6 +8,7 @@ from uuid import uuid4
 from app.api.db import connect, require_dsn
 from app.api.schemas import (
     ApprovalAuditEvent,
+    ApprovalDashboardBucket,
     ApprovalRecord,
     ApprovalStatusValue,
     ApproverUserRole,
@@ -352,9 +353,39 @@ class ApprovalService:
         self,
         *,
         status: ApprovalStatusValue | None = None,
-        limit: int = 20,
-    ) -> list[ApprovalRecord]:
-        sql = """
+        incident_code: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+        sort_by: str = "requested_at",
+        sort_order: str = "desc",
+    ) -> tuple[list[ApprovalRecord], int]:
+        sort_column = {
+            "requested_at": "a.requested_at",
+            "decided_at": "a.decided_at",
+            "status": "a.status",
+        }.get(sort_by, "a.requested_at")
+        sort_direction = "asc" if sort_order == "asc" else "desc"
+        offset = max(page - 1, 0) * page_size
+        where_sql = """
+        where (%(status)s::text is null or a.status = %(status)s::text)
+          and (
+                %(incident_code)s::text is null
+                or (a.payload_json ->> 'incident_code') = %(incident_code)s::text
+          )
+        """
+        base_select = f"""
+        from public.approvals a
+        left join public.users requester
+          on requester.id = a.requested_by_user_id
+        left join public.users approver
+          on approver.id = a.approver_user_id
+        {where_sql}
+        """
+        count_sql = f"""
+        select count(*) as total_count
+        {base_select}
+        """
+        sql = f"""
         select
             a.id::text as approval_id,
             a.status,
@@ -373,28 +404,44 @@ class ApprovalService:
             approver.full_name as approver_full_name,
             approver.role as approver_role,
             approver.email as approver_email
-        from public.approvals a
-        left join public.users requester
-          on requester.id = a.requested_by_user_id
-        left join public.users approver
-          on approver.id = a.approver_user_id
-        where (%(status)s::text is null or a.status = %(status)s::text)
-        order by
-            case a.status
-                when 'pending' then 0
-                when 'approved' then 1
-                when 'rejected' then 2
-                else 3
-            end,
-            a.requested_at desc
+        {base_select}
+        order by {sort_column} {sort_direction}, a.requested_at desc
         limit %(limit)s
+        offset %(offset)s
         """
+        params = {
+            "status": status,
+            "incident_code": incident_code,
+            "limit": page_size,
+            "offset": offset,
+        }
         with connect(self.dsn) as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, {"status": status, "limit": limit})
+                cur.execute(count_sql, params)
+                total_count = cur.fetchone()["total_count"]
+                cur.execute(sql, params)
                 rows = cur.fetchall()
 
-        return [self._map_approval_row(row) for row in rows]
+        return [self._map_approval_row(row) for row in rows], total_count
+
+    def get_approval_dashboard(self, *, page_size_per_bucket: int = 5) -> list[ApprovalDashboardBucket]:
+        buckets: list[ApprovalDashboardBucket] = []
+        for status in ("pending", "approved", "rejected"):
+            approvals, total_count = self.list_approvals(
+                status=status,
+                page=1,
+                page_size=page_size_per_bucket,
+                sort_by="requested_at",
+                sort_order="desc",
+            )
+            buckets.append(
+                ApprovalDashboardBucket(
+                    status=status,
+                    count=total_count,
+                    approvals=approvals,
+                )
+            )
+        return buckets
 
     def create_incident_escalation_request(
         self,

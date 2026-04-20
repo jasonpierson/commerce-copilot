@@ -11,6 +11,7 @@ from app.api.inventory_service import InventoryService
 from app.api.schemas import (
     ApiLink,
     ApprovalAuditEvent,
+    ApprovalDashboardBucket,
     ApprovalRecord,
     ApprovalSuggestion,
     Citation,
@@ -39,6 +40,9 @@ class QueryService:
             return request.route_type_override
 
         query = request.message.lower()
+
+        if self._is_approval_dashboard_lookup(request.message):
+            return "structured_lookup"
 
         if self._is_approval_list_lookup(request.message):
             return "structured_lookup"
@@ -121,6 +125,8 @@ class QueryService:
         query = message.lower()
         if "approval" not in query:
             return False
+        if self._is_approval_dashboard_lookup(message):
+            return False
         return any(
             token in query
             for token in (
@@ -133,6 +139,22 @@ class QueryService:
                 "list approvals",
                 "show approvals",
                 "browse approvals",
+                "approvals for inc-",
+                "approvals for incident",
+            )
+        )
+
+    def _is_approval_dashboard_lookup(self, message: str) -> bool:
+        query = message.lower()
+        if "approval" not in query:
+            return False
+        return any(
+            token in query
+            for token in (
+                "approval dashboard",
+                "approvals dashboard",
+                "dashboard for approvals",
+                "approval work dashboard",
             )
         )
 
@@ -499,14 +521,18 @@ class QueryService:
         approvals: list[ApprovalRecord],
         *,
         status_filter: str | None,
+        incident_code: str | None,
+        total_count: int | None = None,
     ) -> str:
+        scope = f" for {incident_code}" if incident_code else ""
         if not approvals:
             if status_filter:
-                return f"I couldn't find any {status_filter} approvals right now."
-            return "I couldn't find any approval work items right now."
+                return f"I couldn't find any {status_filter} approvals{scope} right now."
+            return f"I couldn't find any approval work items{scope} right now."
 
         label = f"{status_filter} approvals" if status_filter else "approval work items"
-        lines = [f"I found {len(approvals)} {label}:"]
+        count = total_count if total_count is not None else len(approvals)
+        lines = [f"I found {count} {label}{scope}:"]
         for approval in approvals[:5]:
             incident_code = approval.payload.get("incident_code")
             requested_at = approval.requested_at.isoformat()
@@ -517,6 +543,23 @@ class QueryService:
             if incident_code:
                 summary += f" for {incident_code}"
             lines.append(summary)
+        return "\n".join(lines)
+
+    def _build_approval_dashboard_answer(
+        self,
+        buckets: list[ApprovalDashboardBucket],
+    ) -> str:
+        if not buckets or all(bucket.count == 0 for bucket in buckets):
+            return "I couldn't find any approval work items for the dashboard right now."
+
+        total = sum(bucket.count for bucket in buckets)
+        lines = [f"Approval dashboard: {total} total work item(s)."]
+        for bucket in buckets:
+            preview = ", ".join(approval.approval_id for approval in bucket.approvals[:3])
+            line = f"- {bucket.status}: {bucket.count}"
+            if preview:
+                line += f" ({preview})"
+            lines.append(line)
         return "\n".join(lines)
 
     def _build_incident_approval_history_answer(
@@ -886,17 +929,72 @@ class QueryService:
 
         if route_type == "structured_lookup":
             approval_id = self._extract_approval_id(request.message)
+            if self._is_approval_dashboard_lookup(request.message):
+                approval_service = ApprovalService.from_env()
+                buckets = approval_service.get_approval_dashboard(page_size_per_bucket=5)
+                total_count = sum(bucket.count for bucket in buckets)
+                dashboard_links = [
+                    ApiLink(
+                        rel="approval_dashboard",
+                        href="/api/v1/approvals/dashboard",
+                        method="GET",
+                        description="Browse approval work grouped by status.",
+                    ),
+                    ApiLink(
+                        rel="approval_list",
+                        href="/api/v1/approvals",
+                        method="GET",
+                        description="Browse the full approval work queue.",
+                    ),
+                ]
+                return QueryResponse(
+                    request_id=request_id,
+                    route_type="structured_lookup",
+                    data=QueryResponseData(
+                        answer=self._build_approval_dashboard_answer(buckets),
+                        citations=[],
+                        approval_dashboard=buckets,
+                        approvals=[approval for bucket in buckets for approval in bucket.approvals],
+                        links=dashboard_links,
+                    ),
+                    meta=QueryResponseMeta(
+                        citations_included=False,
+                        tools_used=["get_approval_dashboard"],
+                        approval_involved=total_count > 0,
+                    ),
+                )
+
             if self._is_approval_list_lookup(request.message):
                 approval_service = ApprovalService.from_env()
                 status_filter = self._extract_approval_status_filter(request.message)
-                approvals = approval_service.list_approvals(status=status_filter, limit=20)
+                incident_code_filter = self._extract_incident_code(request.message)
+                approvals, total_count = approval_service.list_approvals(
+                    status=status_filter,
+                    incident_code=incident_code_filter,
+                    page=1,
+                    page_size=20,
+                    sort_by="requested_at",
+                    sort_order="desc",
+                )
                 tool_name = "list_approvals"
                 if status_filter:
                     tool_name = f"{tool_name}:{status_filter}"
+                if incident_code_filter:
+                    tool_name = f"{tool_name}:incident"
+                    if status_filter:
+                        tool_name = f"list_approvals:{status_filter}:incident"
+                list_href = "/api/v1/approvals"
+                query_params: list[str] = []
+                if status_filter:
+                    query_params.append(f"status={status_filter}")
+                if incident_code_filter:
+                    query_params.append(f"incident_code={incident_code_filter}")
+                if query_params:
+                    list_href += "?" + "&".join(query_params)
                 links = [
                     ApiLink(
                         rel="approval_list",
-                        href="/api/v1/approvals" + (f"?status={status_filter}" if status_filter else ""),
+                        href=list_href,
                         method="GET",
                         description="Browse approval work items with optional status filtering.",
                     )
@@ -907,7 +1005,12 @@ class QueryService:
                     request_id=request_id,
                     route_type="structured_lookup",
                     data=QueryResponseData(
-                        answer=self._build_approval_list_answer(approvals, status_filter=status_filter),
+                        answer=self._build_approval_list_answer(
+                            approvals,
+                            status_filter=status_filter,
+                            incident_code=incident_code_filter,
+                            total_count=total_count,
+                        ),
                         citations=[],
                         approvals=approvals,
                         links=self._dedupe_links(links),
