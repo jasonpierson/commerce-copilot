@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import re
 from uuid import uuid4
 
-from app.api.schemas import Citation, QueryRequest, QueryResponse, QueryResponseData, QueryResponseMeta
+from app.api.incident_service import IncidentService
 from app.api.inventory_service import InventoryService
+from app.api.schemas import (
+    Citation,
+    IncidentEvent,
+    IncidentRecord,
+    QueryRequest,
+    QueryResponse,
+    QueryResponseData,
+    QueryResponseMeta,
+)
 from app.retrieval.exceptions import RetrievalError
 from app.retrieval.models import RetrievalQueryRequest, RetrievalResult
 from app.retrieval.runtime import build_retrieval_service
@@ -55,6 +65,31 @@ class QueryService:
                 product = match.group("product").strip(" ?.")
                 return re.sub(r"^the\s+", "", product, flags=re.IGNORECASE)
         return re.sub(r"^the\s+", "", normalized.strip(" ?."), flags=re.IGNORECASE)
+
+    def _extract_incident_code(self, message: str) -> str | None:
+        match = re.search(r"\b(INC-\d{3,})\b", message, flags=re.IGNORECASE)
+        if not match:
+            return None
+        return match.group(1).upper()
+
+    def _build_incident_support_query(
+        self,
+        message: str,
+        incident: IncidentRecord | None,
+    ) -> str:
+        if not incident:
+            return message
+
+        parts = [message]
+        if incident.title:
+            parts.append(f"Incident title: {incident.title}")
+        if incident.service_area:
+            parts.append(f"Service area: {incident.service_area}")
+        if incident.severity:
+            parts.append(f"Severity: {incident.severity}")
+        if incident.customer_impact:
+            parts.append(f"Customer impact: {incident.customer_impact}")
+        return "\n".join(parts)
 
     def _retrieve_context(self, request: QueryRequest, *, route_type: str, request_id: str) -> list[RetrievalResult]:
         return build_retrieval_service().retrieve_context(
@@ -117,11 +152,84 @@ class QueryService:
 
         return citations
 
-    def _build_incident_answer(self, retrieval_results: list[RetrievalResult]) -> str:
+    def _format_incident_duration(
+        self,
+        start_time: datetime | None,
+        resolved_time: datetime | None,
+    ) -> str | None:
+        if not start_time:
+            return None
+
+        end_time = resolved_time or datetime.now(UTC)
+        minutes = int(max((end_time - start_time).total_seconds(), 0) // 60)
+        if minutes <= 0:
+            return None
+        return f"about {minutes} minute(s)"
+
+    def _build_incident_next_step(
+        self,
+        incident: IncidentRecord | None,
+        timeline: list[IncidentEvent],
+    ) -> str | None:
+        if not incident:
+            return None
+
+        if incident.status in {"open", "investigating"}:
+            if incident.severity in {"sev1", "sev2"}:
+                return "Keep mitigation work active and escalate if customer impact is still growing."
+            return "Keep the timeline current and continue validating scope before closing the incident."
+
+        if incident.status == "mitigated":
+            return "Monitor recovery signals and prepare the closure summary once stability holds."
+
+        if incident.status == "resolved":
+            if timeline:
+                return "Publish the final incident summary and capture any follow-up remediation from the timeline."
+            return "Publish the final incident summary and capture follow-up remediation."
+
+        return "Continue updating the incident record with status changes and next actions."
+
+    def _build_incident_answer(
+        self,
+        retrieval_results: list[RetrievalResult],
+        *,
+        incident: IncidentRecord | None = None,
+        timeline: list[IncidentEvent] | None = None,
+    ) -> str:
+        timeline = timeline or []
+
+        if incident:
+            duration = self._format_incident_duration(incident.start_time, incident.resolved_time)
+            answer_parts: list[str] = []
+
+            headline = f"{incident.incident_code} — {incident.title}"
+            status_bits = [incident.severity.upper(), incident.status]
+            if incident.service_area:
+                status_bits.append(incident.service_area)
+            headline += f" ({', '.join(status_bits)})"
+            if duration:
+                headline += f" lasted {duration}."
+            else:
+                headline += "."
+            answer_parts.append(headline)
+
+            if incident.summary:
+                answer_parts.append(incident.summary)
+            if incident.customer_impact:
+                answer_parts.append(f"Customer impact: {incident.customer_impact}")
+            if timeline:
+                answer_parts.append(f"Latest timeline update: {timeline[-1].event_summary}")
+
+            supporting_bits: list[str] = []
+            for result in retrieval_results[:2]:
+                supporting_bits.append(self._extract_content(result.chunk_text))
+            if supporting_bits:
+                answer_parts.append(f"Relevant runbook guidance: {' '.join(supporting_bits)}")
+
+            return "\n\n".join(answer_parts).strip()
+
         if not retrieval_results:
-            return (
-                "I couldn't find incident-supporting runbooks or playbooks for that request."
-            )
+            return "I couldn't find incident-supporting runbooks or playbooks for that request."
 
         primary = self._extract_content(retrieval_results[0].chunk_text)
         secondary_bits: list[str] = []
@@ -171,9 +279,44 @@ class QueryService:
             )
 
         if route_type == "incident_summary":
+            incident_code = self._extract_incident_code(request.message)
+            incident: IncidentRecord | None = None
+            timeline: list[IncidentEvent] = []
+            tools_used: list[str] = []
+            retrieval_request = request
+
+            if incident_code:
+                incident_service = IncidentService.from_env()
+                incident = incident_service.get_incident(incident_code)
+                if incident:
+                    timeline = incident_service.get_incident_timeline(incident.incident_id)
+                    tools_used.extend(["get_incident", "get_incident_timeline"])
+                    retrieval_request = request.model_copy(
+                        update={
+                            "message": self._build_incident_support_query(
+                                request.message,
+                                incident,
+                            )
+                        }
+                    )
+                else:
+                    return QueryResponse(
+                        request_id=request_id,
+                        route_type="incident_summary",
+                        data=QueryResponseData(
+                            answer=f"I couldn't find incident {incident_code} in the structured incident data.",
+                            citations=[],
+                        ),
+                        meta=QueryResponseMeta(
+                            citations_included=False,
+                            tools_used=["get_incident"],
+                            approval_involved=False,
+                        ),
+                    )
+
             try:
                 retrieval_results = self._retrieve_context(
-                    request,
+                    retrieval_request,
                     route_type="incident_summary",
                     request_id=request_id,
                 )
@@ -181,15 +324,27 @@ class QueryService:
                 raise
 
             citations = self._build_citations(retrieval_results)
-            answer = self._build_incident_answer(retrieval_results)
+            answer = self._build_incident_answer(
+                retrieval_results,
+                incident=incident,
+                timeline=timeline,
+            )
+            recommended_next_step = self._build_incident_next_step(incident, timeline)
 
             return QueryResponse(
                 request_id=request_id,
                 route_type="incident_summary",
-                data=QueryResponseData(answer=answer, citations=citations),
+                data=QueryResponseData(
+                    answer=answer,
+                    citations=citations,
+                    incident=incident,
+                    incident_timeline=timeline,
+                    customer_impact=incident.customer_impact if incident else None,
+                    recommended_next_step=recommended_next_step,
+                ),
                 meta=QueryResponseMeta(
                     citations_included=bool(citations),
-                    tools_used=[],
+                    tools_used=tools_used,
                     approval_involved=False,
                 ),
             )

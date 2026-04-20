@@ -3,11 +3,11 @@
     "total_cases": 18,
     "retrieval_cases": 15,
     "tool_only_cases": 3,
-    "top_1_hit_rate": 0.8667,
+    "top_1_hit_rate": 1.0,
     "top_3_hit_rate": 1.0,
-    "section_match_top_3_rate": 0.5333,
+    "section_match_top_3_rate": 0.6667,
     "retrieval_boundary_correct_rate": 1.0,
-    "unexpected_noise_top_3_rate": 0.4667
+    "unexpected_noise_top_3_rate": 0.0
   },
   "case_scores": [
     {
@@ -15,16 +15,16 @@
       "route_type": "policy_qa",
       "query": "What is the return process for damaged products?",
       "should_use_retrieval": true,
-      "result_count": 4,
-      "top_result_doc_key": "policy_returns_001",
+      "result_count": 5,
+      "top_result_doc_key": "sop_damaged_product_handling_001",
       "top_3_doc_keys": [
-        "policy_returns_001",
         "sop_damaged_product_handling_001",
-        "sop_inventory_availability_001"
+        "sop_damaged_product_handling_001",
+        "policy_returns_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
-      "section_match_top_3": false,
+      "section_match_top_3": true,
       "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Should retrieve returns policy and damaged-product SOP, not inventory docs."
@@ -34,17 +34,17 @@
       "route_type": "policy_qa",
       "query": "When should support ask for photos on a damaged item case?",
       "should_use_retrieval": true,
-      "result_count": 4,
+      "result_count": 5,
       "top_result_doc_key": "sop_damaged_product_handling_001",
       "top_3_doc_keys": [
         "sop_damaged_product_handling_001",
-        "policy_returns_001",
-        "policy_product_availability_001"
+        "sop_damaged_product_handling_001",
+        "policy_returns_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
       "section_match_top_3": true,
-      "unexpected_noise_top_3": true,
+      "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "This should strongly favor the SOP, not the broader returns policy."
     },
@@ -53,17 +53,17 @@
       "route_type": "policy_qa",
       "query": "Can we promise a customer an exact restock date?",
       "should_use_retrieval": true,
-      "result_count": 4,
+      "result_count": 5,
       "top_result_doc_key": "policy_product_availability_001",
       "top_3_doc_keys": [
         "policy_product_availability_001",
-        "policy_returns_001",
-        "sop_damaged_product_handling_001"
+        "policy_product_availability_001",
+        "sop_inventory_availability_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
       "section_match_top_3": true,
-      "unexpected_noise_top_3": true,
+      "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Good test for policy precision."
     },
@@ -72,17 +72,17 @@
       "route_type": "policy_qa",
       "query": "How should we talk about low-stock items with customers?",
       "should_use_retrieval": true,
-      "result_count": 4,
-      "top_result_doc_key": "policy_returns_001",
+      "result_count": 5,
+      "top_result_doc_key": "sop_inventory_availability_001",
       "top_3_doc_keys": [
-        "policy_returns_001",
-        "sop_damaged_product_handling_001",
+        "sop_inventory_availability_001",
+        "policy_product_availability_001",
         "sop_inventory_availability_001"
       ],
-      "top_1_hit": false,
+      "top_1_hit": true,
       "top_3_hit": true,
       "section_match_top_3": false,
-      "unexpected_noise_top_3": true,
+      "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Either doc may rank first, but both should be near the top."
     },
@@ -91,17 +91,17 @@
       "route_type": "policy_qa",
       "query": "What makes an item non-returnable?",
       "should_use_retrieval": true,
-      "result_count": 4,
+      "result_count": 5,
       "top_result_doc_key": "policy_returns_001",
       "top_3_doc_keys": [
         "policy_returns_001",
         "sop_damaged_product_handling_001",
-        "sop_inventory_availability_001"
+        "policy_returns_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
       "section_match_top_3": true,
-      "unexpected_noise_top_3": true,
+      "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Should be a clean top-1 retrieval."
     },
@@ -110,16 +110,16 @@
       "route_type": "policy_qa",
       "query": "When should a damaged product case be escalated?",
       "should_use_retrieval": true,
-      "result_count": 4,
+      "result_count": 5,
       "top_result_doc_key": "sop_damaged_product_handling_001",
       "top_3_doc_keys": [
         "sop_damaged_product_handling_001",
-        "policy_returns_001",
-        "policy_product_availability_001"
+        "sop_damaged_product_handling_001",
+        "policy_returns_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
-      "section_match_top_3": false,
+      "section_match_top_3": true,
       "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Good overlap test across SOP, policy, and escalation procedure."
@@ -129,7 +129,7 @@
       "route_type": "incident_summary",
       "query": "Summarize a mobile checkout incident and estimate customer impact.",
       "should_use_retrieval": true,
-      "result_count": 3,
+      "result_count": 5,
       "top_result_doc_key": "incident_playbook_mobile_checkout_001",
       "top_3_doc_keys": [
         "incident_playbook_mobile_checkout_001",
@@ -138,7 +138,7 @@
       ],
       "top_1_hit": true,
       "top_3_hit": true,
-      "section_match_top_3": true,
+      "section_match_top_3": false,
       "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "A strong hybrid case; all three doc families are relevant."
@@ -148,17 +148,17 @@
       "route_type": "incident_summary",
       "query": "What should we check first during a checkout incident?",
       "should_use_retrieval": true,
-      "result_count": 3,
-      "top_result_doc_key": "incident_playbook_mobile_checkout_001",
+      "result_count": 5,
+      "top_result_doc_key": "runbook_checkout_incident_001",
       "top_3_doc_keys": [
-        "incident_playbook_mobile_checkout_001",
         "runbook_checkout_incident_001",
-        "runbook_customer_impact_assessment_001"
+        "incident_playbook_mobile_checkout_001",
+        "runbook_checkout_incident_001"
       ],
-      "top_1_hit": false,
+      "top_1_hit": true,
       "top_3_hit": true,
-      "section_match_top_3": false,
-      "unexpected_noise_top_3": true,
+      "section_match_top_3": true,
+      "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "This should strongly favor the main checkout runbook."
     },
@@ -167,17 +167,17 @@
       "route_type": "incident_summary",
       "query": "How should we describe customer harm during an active incident?",
       "should_use_retrieval": true,
-      "result_count": 3,
+      "result_count": 5,
       "top_result_doc_key": "runbook_customer_impact_assessment_001",
       "top_3_doc_keys": [
         "runbook_customer_impact_assessment_001",
-        "runbook_checkout_incident_001",
+        "runbook_customer_impact_assessment_001",
         "incident_playbook_mobile_checkout_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
       "section_match_top_3": false,
-      "unexpected_noise_top_3": true,
+      "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Should not drift toward escalation docs first."
     },
@@ -186,17 +186,17 @@
       "route_type": "incident_summary",
       "query": "What are common signs of a mobile-only checkout problem?",
       "should_use_retrieval": true,
-      "result_count": 3,
+      "result_count": 5,
       "top_result_doc_key": "incident_playbook_mobile_checkout_001",
       "top_3_doc_keys": [
         "incident_playbook_mobile_checkout_001",
         "runbook_checkout_incident_001",
-        "runbook_customer_impact_assessment_001"
+        "incident_playbook_mobile_checkout_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
       "section_match_top_3": true,
-      "unexpected_noise_top_3": true,
+      "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Should rank the mobile playbook above the general checkout runbook."
     },
@@ -205,12 +205,12 @@
       "route_type": "incident_summary",
       "query": "When is a checkout incident considered stable enough to close?",
       "should_use_retrieval": true,
-      "result_count": 3,
+      "result_count": 5,
       "top_result_doc_key": "runbook_checkout_incident_001",
       "top_3_doc_keys": [
         "runbook_checkout_incident_001",
         "incident_playbook_mobile_checkout_001",
-        "runbook_customer_impact_assessment_001"
+        "runbook_checkout_incident_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -224,9 +224,10 @@
       "route_type": "escalation_guidance",
       "query": "When should an incident be escalated?",
       "should_use_retrieval": true,
-      "result_count": 2,
+      "result_count": 4,
       "top_result_doc_key": "escalation_procedure_incident_escalation_001",
       "top_3_doc_keys": [
+        "escalation_procedure_incident_escalation_001",
         "escalation_procedure_incident_escalation_001",
         "matrix_priority_escalation_001"
       ],
@@ -242,11 +243,12 @@
       "route_type": "escalation_guidance",
       "query": "What qualifies as high priority escalation?",
       "should_use_retrieval": true,
-      "result_count": 2,
+      "result_count": 4,
       "top_result_doc_key": "matrix_priority_escalation_001",
       "top_3_doc_keys": [
         "matrix_priority_escalation_001",
-        "escalation_procedure_incident_escalation_001"
+        "escalation_procedure_incident_escalation_001",
+        "matrix_priority_escalation_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -260,11 +262,12 @@
       "route_type": "escalation_guidance",
       "query": "Who is allowed to approve escalation requests?",
       "should_use_retrieval": true,
-      "result_count": 2,
+      "result_count": 4,
       "top_result_doc_key": "escalation_procedure_incident_escalation_001",
       "top_3_doc_keys": [
         "escalation_procedure_incident_escalation_001",
-        "matrix_priority_escalation_001"
+        "matrix_priority_escalation_001",
+        "escalation_procedure_incident_escalation_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -278,9 +281,10 @@
       "route_type": "escalation_guidance",
       "query": "How do we choose between medium and high priority?",
       "should_use_retrieval": true,
-      "result_count": 2,
+      "result_count": 4,
       "top_result_doc_key": "matrix_priority_escalation_001",
       "top_3_doc_keys": [
+        "matrix_priority_escalation_001",
         "matrix_priority_escalation_001",
         "escalation_procedure_incident_escalation_001"
       ],

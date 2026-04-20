@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
-import psycopg
-from psycopg.rows import dict_row
-
+from app.api.db import connect, require_dsn
 from app.api.schemas import InventoryResult, ProductMatch
 
 
@@ -22,10 +19,7 @@ class InventoryService:
 
     @classmethod
     def from_env(cls) -> "InventoryService":
-        dsn = os.getenv("SUPABASE_DB_URL")
-        if not dsn:
-            raise RuntimeError("SUPABASE_DB_URL is required for structured inventory lookup")
-        return cls(dsn=dsn)
+        return cls(dsn=require_dsn())
 
     def _resolve_product(self, product_query: str) -> ProductMatch | None:
         sql = """
@@ -52,7 +46,7 @@ class InventoryService:
             product_name
         limit 1
         """
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with connect(self.dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     sql,
@@ -82,7 +76,7 @@ class InventoryService:
         where i.product_id::text = %(product_id)s
         order by i.quantity_available desc, l.location_name asc
         """
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+        with connect(self.dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, {"product_id": product_id})
                 rows = cur.fetchall()

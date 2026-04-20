@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -52,11 +53,35 @@ class InventoryResult(BaseModel):
     inventory_status: str | None = None
 
 
+class IncidentRecord(BaseModel):
+    incident_id: str
+    incident_code: str
+    title: str
+    status: str
+    severity: str
+    service_area: str | None = None
+    summary: str | None = None
+    customer_impact: str | None = None
+    start_time: datetime | None = None
+    resolved_time: datetime | None = None
+
+
+class IncidentEvent(BaseModel):
+    event_time: datetime
+    event_type: str
+    actor: str | None = None
+    event_summary: str
+
+
 class QueryResponseData(BaseModel):
     answer: str
     citations: list[Citation] = Field(default_factory=list)
     product: ProductMatch | None = None
     inventory_results: list[InventoryResult] = Field(default_factory=list)
+    incident: IncidentRecord | None = None
+    incident_timeline: list[IncidentEvent] = Field(default_factory=list)
+    customer_impact: str | None = None
+    recommended_next_step: str | None = None
 
 
 class QueryResponseMeta(BaseModel):

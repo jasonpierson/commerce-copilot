@@ -41,7 +41,11 @@ class RetrievalService:
                 candidate_limit=policy.candidate_limit,
             )
 
-            scored_rows = apply_post_retrieval_scoring(normalized_query, candidate_rows)
+            scored_rows = apply_post_retrieval_scoring(
+                normalized_query,
+                candidate_rows,
+                route_type=req.route_type,
+            )
 
             # Route-specific per-doc caps for diversity/precision balance
             if req.route_type == "policy_qa":
