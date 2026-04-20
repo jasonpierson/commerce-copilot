@@ -43,6 +43,9 @@ class QueryService:
         if self._looks_like_approval_lookup(request.message):
             return "structured_lookup"
 
+        if self._extract_incident_code(request.message) and self._is_incident_escalation_status_lookup(request.message):
+            return "incident_summary"
+
         if any(token in query for token in ("inventory", "in stock", "sku", "stock level")):
             return "structured_lookup"
 
@@ -134,6 +137,20 @@ class QueryService:
                 "who rejected",
                 "who decided",
                 "who reviewed approval",
+            )
+        )
+
+    def _is_incident_escalation_status_lookup(self, message: str) -> bool:
+        query = message.lower()
+        return any(
+            token in query
+            for token in (
+                "already been escalated",
+                "already escalated",
+                "has this incident been escalated",
+                "was this incident escalated",
+                "is there already an approval",
+                "is there an approval",
             )
         )
 
@@ -269,6 +286,30 @@ class QueryService:
         return (
             f"Linked approval {approval.approval_id} is {approval.status}; {approver_name} recorded the decision at {decided_at}."
         )
+
+    def _build_incident_escalation_status_answer(
+        self,
+        incident: IncidentRecord | None,
+        linked_approval: ApprovalRecord | None,
+    ) -> str:
+        if not incident:
+            return "I couldn't determine escalation status because I couldn't load the incident record."
+
+        if not linked_approval:
+            return (
+                f"No linked escalation approval has been recorded for {incident.incident_code} yet."
+            )
+
+        approver_name = linked_approval.approver.full_name if linked_approval.approver else "the assigned approver"
+        requested_at = linked_approval.requested_at.isoformat()
+        base = (
+            f"Yes. {incident.incident_code} already has approval {linked_approval.approval_id}, "
+            f"requested at {requested_at}."
+        )
+        if linked_approval.status == "pending":
+            return f"{base} It is still pending with {approver_name}."
+        decided_at = linked_approval.decided_at.isoformat() if linked_approval.decided_at else "a recorded time"
+        return f"{base} It is {linked_approval.status}, and {approver_name} recorded the decision at {decided_at}."
 
     def _build_approval_history_answer(
         self,
@@ -648,7 +689,9 @@ class QueryService:
                 incident=incident,
                 timeline=timeline,
             )
-            if linked_approval:
+            if self._is_incident_escalation_status_lookup(request.message):
+                answer = self._build_incident_escalation_status_answer(incident, linked_approval)
+            elif linked_approval:
                 answer = f"{answer}\n\nApproval state: {self._build_incident_approval_summary(linked_approval)}"
             recommended_next_step = self._build_incident_next_step(incident, timeline)
             approval_suggestion = self._build_approval_suggestion(incident)

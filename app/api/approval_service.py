@@ -257,7 +257,12 @@ class ApprovalService:
 
         return self._map_approval_row(row)
 
-    def get_approval_audit(self, approval_id: str) -> list[ApprovalAuditEvent]:
+    def get_approval_audit(
+        self,
+        approval_id: str,
+        *,
+        event_type: str | None = None,
+    ) -> list[ApprovalAuditEvent]:
         approval = self.get_approval_status(approval_id)
         sql = """
         select
@@ -285,6 +290,7 @@ class ApprovalService:
                 and (ae.event_payload_json ->> 'incident_code') = %(incident_code)s
              )
         )
+          and (%(event_type)s::text is null or ae.event_type = %(event_type)s::text)
         order by ae.created_at asc
         """
         with connect(self.dsn) as conn:
@@ -295,6 +301,7 @@ class ApprovalService:
                         "approval_id": approval_id,
                         "target_id": approval.target_id,
                         "incident_code": approval.payload.get("incident_code"),
+                        "event_type": event_type,
                     },
                 )
                 rows = cur.fetchall()

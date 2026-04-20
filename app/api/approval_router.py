@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from fastapi.responses import JSONResponse
 
 from app.api.approval_service import (
@@ -160,12 +160,15 @@ def get_approval_status(approval_id: str) -> ApprovalStatusResponse | JSONRespon
         502: {"model": ErrorResponse},
     },
 )
-def get_approval_audit(approval_id: str) -> ApprovalAuditResponse | JSONResponse:
+def get_approval_audit(
+    approval_id: str,
+    event_type: str | None = Query(default=None, pattern="^(approval_requested|approval_decided)$"),
+) -> ApprovalAuditResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
     service = ApprovalService.from_env()
     try:
         approval = service.get_approval_status(approval_id)
-        audit_events = service.get_approval_audit(approval_id)
+        audit_events = service.get_approval_audit(approval_id, event_type=event_type)
         return ApprovalAuditResponse(
             request_id=request_id,
             data=ApprovalAuditData(approval=approval, audit_events=audit_events),
