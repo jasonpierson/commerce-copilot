@@ -3,12 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
+from collections import Counter
 from uuid import uuid4
 
 from app.api.db import connect, require_dsn
 from app.api.schemas import (
     ApprovalAuditEvent,
     ApprovalDashboardBucket,
+    ApprovalIncidentPressureMetric,
+    ApprovalDashboardMetrics,
+    ApprovalPendingOwnerMetric,
     ApprovalRecord,
     ApprovalStatusValue,
     ApproverUserRole,
@@ -354,6 +358,7 @@ class ApprovalService:
         *,
         status: ApprovalStatusValue | None = None,
         incident_code: str | None = None,
+        requester: str | None = None,
         page: int = 1,
         page_size: int = 20,
         sort_by: str = "requested_at",
@@ -371,6 +376,12 @@ class ApprovalService:
           and (
                 %(incident_code)s::text is null
                 or (a.payload_json ->> 'incident_code') = %(incident_code)s::text
+          )
+          and (
+                %(requester)s::text is null
+                or requester.id::text = %(requester)s::text
+                or lower(requester.email) = lower(%(requester)s::text)
+                or lower(requester.full_name) like lower(%(requester_like)s::text)
           )
         """
         base_select = f"""
@@ -412,6 +423,8 @@ class ApprovalService:
         params = {
             "status": status,
             "incident_code": incident_code,
+            "requester": requester,
+            "requester_like": f"%{requester}%" if requester else None,
             "limit": page_size,
             "offset": offset,
         }
@@ -424,11 +437,87 @@ class ApprovalService:
 
         return [self._map_approval_row(row) for row in rows], total_count
 
-    def get_approval_dashboard(self, *, page_size_per_bucket: int = 5) -> list[ApprovalDashboardBucket]:
+    def _build_pending_metrics(
+        self,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+    ) -> ApprovalDashboardMetrics:
+        pending_approvals, pending_count = self.list_approvals(
+            status="pending",
+            incident_code=incident_code,
+            requester=requester,
+            page=1,
+            page_size=200,
+            sort_by="requested_at",
+            sort_order="asc",
+        )
+
+        oldest_pending_age_minutes: int | None = None
+        if pending_approvals:
+            oldest_requested_at = pending_approvals[0].requested_at
+            oldest_pending_age_minutes = int(
+                max((datetime.now(UTC) - oldest_requested_at).total_seconds(), 0) // 60
+            )
+
+        priority_counts = Counter(
+            (approval.payload.get("proposed_priority") or "unknown")
+            for approval in pending_approvals
+        )
+        owner_counts: Counter[tuple[str, str | None]] = Counter(
+            (
+                approval.approver.full_name if approval.approver else "Unassigned approver",
+                approval.approver.role if approval.approver else None,
+            )
+            for approval in pending_approvals
+        )
+        incident_counts = Counter(
+            approval.payload.get("incident_code") or "unknown_incident"
+            for approval in pending_approvals
+        )
+        owners = [
+            ApprovalPendingOwnerMetric(
+                approver_name=name,
+                approver_role=role,
+                pending_count=count,
+            )
+            for (name, role), count in sorted(
+                owner_counts.items(),
+                key=lambda item: (-item[1], item[0][0]),
+            )
+        ]
+        incidents = [
+            ApprovalIncidentPressureMetric(
+                incident_code=incident_code,
+                pending_count=count,
+            )
+            for incident_code, count in sorted(
+                incident_counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ]
+
+        return ApprovalDashboardMetrics(
+            pending_count=pending_count,
+            oldest_pending_age_minutes=oldest_pending_age_minutes,
+            pending_by_priority=dict(sorted(priority_counts.items())),
+            pending_by_owner=owners,
+            pending_by_incident=incidents,
+        )
+
+    def get_approval_dashboard(
+        self,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+        page_size_per_bucket: int = 5,
+    ) -> tuple[list[ApprovalDashboardBucket], ApprovalDashboardMetrics]:
         buckets: list[ApprovalDashboardBucket] = []
         for status in ("pending", "approved", "rejected"):
             approvals, total_count = self.list_approvals(
                 status=status,
+                incident_code=incident_code,
+                requester=requester,
                 page=1,
                 page_size=page_size_per_bucket,
                 sort_by="requested_at",
@@ -441,7 +530,8 @@ class ApprovalService:
                     approvals=approvals,
                 )
             )
-        return buckets
+        metrics = self._build_pending_metrics(incident_code=incident_code, requester=requester)
+        return buckets, metrics
 
     def create_incident_escalation_request(
         self,

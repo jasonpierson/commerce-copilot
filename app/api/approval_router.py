@@ -128,6 +128,7 @@ def create_incident_escalation(
 def list_approvals(
     approval_status: str | None = Query(default=None, alias="status", pattern="^(pending|approved|rejected)$"),
     incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
+    requester: str | None = Query(default=None),
     page: int = Query(default=1, ge=1, le=1000),
     page_size: int = Query(default=20, ge=1, le=100),
     sort_by: str = Query(default="requested_at", pattern="^(requested_at|decided_at|status)$"),
@@ -138,6 +139,7 @@ def list_approvals(
         approvals, total_count = ApprovalService.from_env().list_approvals(
             status=approval_status,
             incident_code=incident_code,
+            requester=requester,
             page=page,
             page_size=page_size,
             sort_by=sort_by,
@@ -157,6 +159,7 @@ def list_approvals(
                 sort_order=sort_order,
                 status_filter=approval_status,
                 incident_code_filter=incident_code,
+                requester_filter=requester,
             ),
             meta=QueryResponseMeta(
                 citations_included=False,
@@ -182,12 +185,16 @@ def list_approvals(
     },
 )
 def get_approval_dashboard(
+    incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
+    requester: str | None = Query(default=None),
     page_size_per_bucket: int = Query(default=5, ge=1, le=25),
 ) -> ApprovalDashboardResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
     try:
-        buckets = ApprovalService.from_env().get_approval_dashboard(
-            page_size_per_bucket=page_size_per_bucket
+        buckets, metrics = ApprovalService.from_env().get_approval_dashboard(
+            incident_code=incident_code,
+            requester=requester,
+            page_size_per_bucket=page_size_per_bucket,
         )
         total_count = sum(bucket.count for bucket in buckets)
         return ApprovalDashboardResponse(
@@ -196,6 +203,9 @@ def get_approval_dashboard(
                 buckets=buckets,
                 total_count=total_count,
                 page_size_per_bucket=page_size_per_bucket,
+                metrics=metrics,
+                incident_code_filter=incident_code,
+                requester_filter=requester,
             ),
             meta=QueryResponseMeta(
                 citations_included=False,

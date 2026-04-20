@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
+from urllib.parse import urlencode
 from uuid import uuid4
 
 from app.api.approval_service import ApprovalNotFoundError, ApprovalService
@@ -12,6 +13,7 @@ from app.api.schemas import (
     ApiLink,
     ApprovalAuditEvent,
     ApprovalDashboardBucket,
+    ApprovalDashboardMetrics,
     ApprovalRecord,
     ApprovalSuggestion,
     Citation,
@@ -40,6 +42,9 @@ class QueryService:
             return request.route_type_override
 
         query = request.message.lower()
+
+        if self._is_pending_owner_lookup(request.message) or self._is_escalation_load_lookup(request.message):
+            return "structured_lookup"
 
         if self._is_approval_dashboard_lookup(request.message):
             return "structured_lookup"
@@ -158,11 +163,47 @@ class QueryService:
             )
         )
 
+    def _is_pending_owner_lookup(self, message: str) -> bool:
+        query = message.lower()
+        return "pending approval" in query and any(
+            token in query
+            for token in (
+                "who is holding",
+                "who's holding",
+                "who owns",
+                "who has",
+            )
+        )
+
+    def _is_escalation_load_lookup(self, message: str) -> bool:
+        query = message.lower()
+        return "pending approval" in query and any(
+            token in query
+            for token in (
+                "approval pressure",
+                "most pending",
+                "highest pending",
+                "which incidents have",
+                "escalation load",
+            )
+        )
+
     def _extract_approval_status_filter(self, message: str) -> str | None:
         query = message.lower()
         for status in ("pending", "approved", "rejected"):
             if status in query:
                 return status
+        return None
+
+    def _extract_requester_filter(self, message: str) -> str | None:
+        patterns = [
+            r"requested by (?P<requester>[a-z0-9 .@_-]+)",
+            r"for requester (?P<requester>[a-z0-9 .@_-]+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, message, flags=re.IGNORECASE)
+            if match:
+                return match.group("requester").strip(" ?.")
         return None
 
     def _is_approval_history_lookup(self, message: str) -> bool:
@@ -522,9 +563,15 @@ class QueryService:
         *,
         status_filter: str | None,
         incident_code: str | None,
+        requester: str | None = None,
         total_count: int | None = None,
     ) -> str:
-        scope = f" for {incident_code}" if incident_code else ""
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
         if not approvals:
             if status_filter:
                 return f"I couldn't find any {status_filter} approvals{scope} right now."
@@ -548,12 +595,32 @@ class QueryService:
     def _build_approval_dashboard_answer(
         self,
         buckets: list[ApprovalDashboardBucket],
+        metrics: ApprovalDashboardMetrics | None = None,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
     ) -> str:
         if not buckets or all(bucket.count == 0 for bucket in buckets):
             return "I couldn't find any approval work items for the dashboard right now."
 
         total = sum(bucket.count for bucket in buckets)
-        lines = [f"Approval dashboard: {total} total work item(s)."]
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        scope = f" ({', '.join(scope_bits)})" if scope_bits else ""
+        lines = [f"Approval dashboard{scope}: {total} total work item(s)."]
+        if metrics:
+            metrics_line = f"Pending: {metrics.pending_count}"
+            if metrics.oldest_pending_age_minutes is not None:
+                metrics_line += f"; oldest pending age: {metrics.oldest_pending_age_minutes} minute(s)"
+            if metrics.pending_by_priority:
+                priority_summary = ", ".join(
+                    f"{priority}={count}" for priority, count in metrics.pending_by_priority.items()
+                )
+                metrics_line += f"; pending by priority: {priority_summary}"
+            lines.append(metrics_line)
         for bucket in buckets:
             preview = ", ".join(approval.approval_id for approval in bucket.approvals[:3])
             line = f"- {bucket.status}: {bucket.count}"
@@ -561,6 +628,72 @@ class QueryService:
                 line += f" ({preview})"
             lines.append(line)
         return "\n".join(lines)
+
+    def _build_pending_owner_answer(
+        self,
+        metrics: ApprovalDashboardMetrics,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+    ) -> str:
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        if not metrics.pending_by_owner:
+            return f"I couldn't find any pending approvals{scope} right now."
+
+        lines = [f"Pending approvals{scope} are currently held by:"]
+        for owner in metrics.pending_by_owner:
+            role = f" ({owner.approver_role})" if owner.approver_role else ""
+            lines.append(f"- {owner.approver_name}{role}: {owner.pending_count}")
+        return "\n".join(lines)
+
+    def _build_escalation_load_answer(
+        self,
+        metrics: ApprovalDashboardMetrics,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+    ) -> str:
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        if not metrics.pending_by_incident:
+            return f"I couldn't find any pending approval pressure{scope} right now."
+
+        top_incident = metrics.pending_by_incident[0]
+        lines = [
+            f"Pending approval pressure is currently highest on {top_incident.incident_code} with {top_incident.pending_count} pending approval(s){scope}."
+        ]
+        if len(metrics.pending_by_incident) > 1:
+            lines.append("Current pending approval pressure by incident:")
+            for incident_metric in metrics.pending_by_incident:
+                lines.append(f"- {incident_metric.incident_code}: {incident_metric.pending_count}")
+        return "\n".join(lines)
+
+    def _build_query_string(
+        self,
+        *,
+        status: str | None = None,
+        incident_code: str | None = None,
+        requester: str | None = None,
+    ) -> str:
+        params: dict[str, str] = {}
+        if status:
+            params["status"] = status
+        if incident_code:
+            params["incident_code"] = incident_code
+        if requester:
+            params["requester"] = requester
+        if not params:
+            return ""
+        return "?" + urlencode(params)
 
     def _build_incident_approval_history_answer(
         self,
@@ -929,31 +1062,67 @@ class QueryService:
 
         if route_type == "structured_lookup":
             approval_id = self._extract_approval_id(request.message)
-            if self._is_approval_dashboard_lookup(request.message):
+            if (
+                self._is_pending_owner_lookup(request.message)
+                or self._is_escalation_load_lookup(request.message)
+                or self._is_approval_dashboard_lookup(request.message)
+            ):
                 approval_service = ApprovalService.from_env()
-                buckets = approval_service.get_approval_dashboard(page_size_per_bucket=5)
+                incident_code_filter = self._extract_incident_code(request.message)
+                requester_filter = self._extract_requester_filter(request.message)
+                buckets, metrics = approval_service.get_approval_dashboard(
+                    incident_code=incident_code_filter,
+                    requester=requester_filter,
+                    page_size_per_bucket=5,
+                )
                 total_count = sum(bucket.count for bucket in buckets)
+                dashboard_href = "/api/v1/approvals/dashboard"
+                dashboard_href += self._build_query_string(
+                    incident_code=incident_code_filter,
+                    requester=requester_filter,
+                )
                 dashboard_links = [
                     ApiLink(
                         rel="approval_dashboard",
-                        href="/api/v1/approvals/dashboard",
+                        href=dashboard_href,
                         method="GET",
                         description="Browse approval work grouped by status.",
                     ),
                     ApiLink(
                         rel="approval_list",
-                        href="/api/v1/approvals",
+                        href=dashboard_href.replace("/approvals/dashboard", "/approvals"),
                         method="GET",
                         description="Browse the full approval work queue.",
                     ),
                 ]
+                answer = (
+                    self._build_pending_owner_answer(
+                        metrics,
+                        incident_code=incident_code_filter,
+                        requester=requester_filter,
+                    )
+                    if self._is_pending_owner_lookup(request.message)
+                    else self._build_escalation_load_answer(
+                        metrics,
+                        incident_code=incident_code_filter,
+                        requester=requester_filter,
+                    )
+                    if self._is_escalation_load_lookup(request.message)
+                    else self._build_approval_dashboard_answer(
+                        buckets,
+                        metrics,
+                        incident_code=incident_code_filter,
+                        requester=requester_filter,
+                    )
+                )
                 return QueryResponse(
                     request_id=request_id,
                     route_type="structured_lookup",
                     data=QueryResponseData(
-                        answer=self._build_approval_dashboard_answer(buckets),
+                        answer=answer,
                         citations=[],
                         approval_dashboard=buckets,
+                        approval_dashboard_metrics=metrics,
                         approvals=[approval for bucket in buckets for approval in bucket.approvals],
                         links=dashboard_links,
                     ),
@@ -968,9 +1137,11 @@ class QueryService:
                 approval_service = ApprovalService.from_env()
                 status_filter = self._extract_approval_status_filter(request.message)
                 incident_code_filter = self._extract_incident_code(request.message)
+                requester_filter = self._extract_requester_filter(request.message)
                 approvals, total_count = approval_service.list_approvals(
                     status=status_filter,
                     incident_code=incident_code_filter,
+                    requester=requester_filter,
                     page=1,
                     page_size=20,
                     sort_by="requested_at",
@@ -984,13 +1155,11 @@ class QueryService:
                     if status_filter:
                         tool_name = f"list_approvals:{status_filter}:incident"
                 list_href = "/api/v1/approvals"
-                query_params: list[str] = []
-                if status_filter:
-                    query_params.append(f"status={status_filter}")
-                if incident_code_filter:
-                    query_params.append(f"incident_code={incident_code_filter}")
-                if query_params:
-                    list_href += "?" + "&".join(query_params)
+                list_href += self._build_query_string(
+                    status=status_filter,
+                    incident_code=incident_code_filter,
+                    requester=requester_filter,
+                )
                 links = [
                     ApiLink(
                         rel="approval_list",
@@ -1009,6 +1178,7 @@ class QueryService:
                             approvals,
                             status_filter=status_filter,
                             incident_code=incident_code_filter,
+                            requester=requester_filter,
                             total_count=total_count,
                         ),
                         citations=[],

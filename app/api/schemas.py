@@ -100,6 +100,7 @@ class QueryResponseData(BaseModel):
     approval: ApprovalRecord | None = None
     approvals: list[ApprovalRecord] = Field(default_factory=list)
     approval_dashboard: list["ApprovalDashboardBucket"] = Field(default_factory=list)
+    approval_dashboard_metrics: ApprovalDashboardMetrics | None = None
     approval_audit: list["ApprovalAuditEvent"] = Field(default_factory=list)
     incident: IncidentRecord | None = None
     incident_timeline: list[IncidentEvent] = Field(default_factory=list)
@@ -217,6 +218,7 @@ class ApprovalListData(BaseModel):
     sort_order: Literal["asc", "desc"] = "desc"
     status_filter: ApprovalStatusValue | None = None
     incident_code_filter: str | None = None
+    requester_filter: str | None = None
 
 
 class ApprovalDashboardBucket(BaseModel):
@@ -225,10 +227,32 @@ class ApprovalDashboardBucket(BaseModel):
     approvals: list[ApprovalRecord] = Field(default_factory=list)
 
 
+class ApprovalPendingOwnerMetric(BaseModel):
+    approver_name: str
+    approver_role: SupportedUserRole | None = None
+    pending_count: int = 0
+
+
+class ApprovalIncidentPressureMetric(BaseModel):
+    incident_code: str
+    pending_count: int = 0
+
+
+class ApprovalDashboardMetrics(BaseModel):
+    pending_count: int = 0
+    oldest_pending_age_minutes: int | None = None
+    pending_by_priority: dict[str, int] = Field(default_factory=dict)
+    pending_by_owner: list[ApprovalPendingOwnerMetric] = Field(default_factory=list)
+    pending_by_incident: list[ApprovalIncidentPressureMetric] = Field(default_factory=list)
+
+
 class ApprovalDashboardData(BaseModel):
     buckets: list[ApprovalDashboardBucket] = Field(default_factory=list)
     total_count: int = 0
     page_size_per_bucket: int = 5
+    metrics: ApprovalDashboardMetrics = Field(default_factory=ApprovalDashboardMetrics)
+    incident_code_filter: str | None = None
+    requester_filter: str | None = None
 
 
 class ApprovalRequestResponse(BaseModel):
