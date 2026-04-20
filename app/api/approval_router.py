@@ -15,6 +15,8 @@ from app.api.approval_service import (
 from app.api.incident_service import IncidentService
 from app.api.schemas import (
     ApprovalAuditData,
+    ApprovalListData,
+    ApprovalListResponse,
     ApprovalAuditResponse,
     ApprovalData,
     ApprovalDecisionRequest,
@@ -148,6 +150,42 @@ def get_approval_status(approval_id: str) -> ApprovalStatusResponse | JSONRespon
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="APPROVAL_STATUS_FAILED",
             message="The backend could not load the approval status.",
+            details={"cause": type(exc).__name__},
+        )
+
+
+@router.get(
+    "/approvals",
+    response_model=ApprovalListResponse,
+    responses={
+        502: {"model": ErrorResponse},
+    },
+)
+def list_approvals(
+    approval_status: str | None = Query(default=None, alias="status", pattern="^(pending|approved|rejected)$"),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> ApprovalListResponse | JSONResponse:
+    request_id = f"req_{uuid4().hex[:12]}"
+    try:
+        approvals = ApprovalService.from_env().list_approvals(status=approval_status, limit=limit)
+        tool_name = "list_approvals"
+        if approval_status:
+            tool_name = f"{tool_name}:{approval_status}"
+        return ApprovalListResponse(
+            request_id=request_id,
+            data=ApprovalListData(approvals=approvals),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=[tool_name],
+                approval_involved=bool(approvals),
+            ),
+        )
+    except Exception as exc:
+        return _error_response(
+            request_id=request_id,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="APPROVAL_LIST_FAILED",
+            message="The backend could not load approval work items.",
             details={"cause": type(exc).__name__},
         )
 

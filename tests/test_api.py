@@ -280,6 +280,13 @@ class FakeApprovalService:
                 return record
         return None
 
+    def list_approvals(self, *, status: str | None = None, limit: int = 20) -> list[ApprovalRecord]:
+        records = list(self.records.values())
+        if status:
+            records = [record for record in records if record.status == status]
+        records.sort(key=lambda record: record.requested_at, reverse=True)
+        return records[:limit]
+
 
 class ApiWorkflowTests(TestCase):
     client = TestClient(app)
@@ -396,6 +403,46 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["data"]["approval"]["status"], "rejected")
         self.assertEqual(payload["meta"]["tools_used"], ["get_approval_status"])
         self.assertTrue(payload["meta"]["approval_involved"])
+
+    def test_query_approval_rejection_reason_uses_audit_notes(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_approval_reason_lookup",
+        )
+        fake_approval_service.decide_approval(
+            approval_id="apr_test_001",
+            decider_user_id="demo-ops-manager-001",
+            decider_role="ops_manager",
+            decision="rejected",
+            decision_notes="Mitigation stabilized and leadership escalation is no longer necessary.",
+            request_id="req_test_approval_reason_decision",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Why was approval apr_test_001 rejected?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("was rejected because", payload["data"]["answer"])
+        self.assertIn("Mitigation stabilized", payload["data"]["answer"])
+        self.assertEqual(payload["meta"]["tools_used"], ["get_approval_status", "get_approval_audit"])
 
     def test_query_approval_history_returns_audit_timestamps(self) -> None:
         fake_approval_service = FakeApprovalService()
@@ -608,6 +655,136 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["route_type"], "incident_summary")
         self.assertIn("already has approval apr_test_001", payload["data"]["answer"])
         self.assertEqual(payload["data"]["approval"]["approval_id"], "apr_test_001")
+        self.assertTrue(payload["meta"]["approval_involved"])
+
+    def test_query_incident_summary_returns_linked_approval_history(self) -> None:
+        retrieval_results = [
+            RetrievalResult(
+                document_id="doc_8",
+                doc_key="runbook_checkout_incident_001",
+                title="Checkout Incident Runbook",
+                doc_type="runbook",
+                audience="engineering_support",
+                section_title="Initial Triage",
+                chunk_index=0,
+                chunk_text=(
+                    "Title: Checkout Incident Runbook\n"
+                    "Section: Initial Triage\n"
+                    "Content: Check recent deploys, configuration changes, and known dependency incidents."
+                ),
+                relevance_score=0.84,
+            )
+        ]
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_incident_approval_history_lookup",
+        )
+        fake_approval_service.decide_approval(
+            approval_id="apr_test_001",
+            decider_user_id="demo-ops-manager-001",
+            decider_role="ops_manager",
+            decision="approved",
+            decision_notes="Proceed with escalation.",
+            request_id="req_test_incident_approval_history_decision",
+        )
+
+        with patch(
+            "app.api.query_service.IncidentService.from_env",
+            return_value=FakeIncidentService(),
+        ), patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ), patch.object(QueryService, "_retrieve_context", return_value=retrieval_results):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Show me the approval history for incident INC-1042.",
+                    "user_role": "engineering_support",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "incident_summary")
+        self.assertIn("Approval history for INC-1042", payload["data"]["answer"])
+        self.assertEqual(len(payload["data"]["approval_audit"]), 2)
+        self.assertIn("get_latest_incident_approval", payload["meta"]["tools_used"])
+        self.assertIn("get_approval_audit", payload["meta"]["tools_used"])
+
+    def test_approval_list_endpoint_filters_pending_items(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_approval_list_pending",
+        )
+        fake_approval_service.records["apr_test_approved"] = fake_approval_service.records["apr_test_001"].model_copy(
+            update={
+                "approval_id": "apr_test_approved",
+                "status": "approved",
+                "target_id": "inc_other",
+                "payload": {"incident_code": "INC-2001", "proposed_priority": "medium"},
+            }
+        )
+
+        with patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.get("/api/v1/approvals?status=pending")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "approval_list")
+        self.assertEqual(len(payload["data"]["approvals"]), 1)
+        self.assertEqual(payload["data"]["approvals"][0]["approval_id"], "apr_test_001")
+        self.assertEqual(payload["meta"]["tools_used"], ["list_approvals:pending"])
+
+    def test_query_approval_list_returns_pending_items(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_query_approval_list_pending",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Show me all pending approvals.",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("I found 1 pending approvals", payload["data"]["answer"])
+        self.assertEqual(len(payload["data"]["approvals"]), 1)
+        self.assertEqual(payload["data"]["approvals"][0]["approval_id"], "apr_test_001")
+        self.assertEqual(payload["data"]["links"][0]["href"], "/api/v1/approvals?status=pending")
+        self.assertEqual(payload["meta"]["tools_used"], ["list_approvals:pending"])
         self.assertTrue(payload["meta"]["approval_involved"])
 
     def test_incident_detail_endpoint_returns_incident_and_timeline(self) -> None:

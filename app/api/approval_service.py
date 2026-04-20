@@ -348,6 +348,54 @@ class ApprovalService:
 
         return self._map_approval_row(row)
 
+    def list_approvals(
+        self,
+        *,
+        status: ApprovalStatusValue | None = None,
+        limit: int = 20,
+    ) -> list[ApprovalRecord]:
+        sql = """
+        select
+            a.id::text as approval_id,
+            a.status,
+            a.request_type,
+            a.target_type,
+            a.target_id,
+            a.requested_at,
+            a.decided_at,
+            a.decision_notes,
+            a.payload_json as payload,
+            requester.id::text as requester_user_id,
+            requester.full_name as requester_full_name,
+            requester.role as requester_role,
+            requester.email as requester_email,
+            approver.id::text as approver_user_id,
+            approver.full_name as approver_full_name,
+            approver.role as approver_role,
+            approver.email as approver_email
+        from public.approvals a
+        left join public.users requester
+          on requester.id = a.requested_by_user_id
+        left join public.users approver
+          on approver.id = a.approver_user_id
+        where (%(status)s::text is null or a.status = %(status)s::text)
+        order by
+            case a.status
+                when 'pending' then 0
+                when 'approved' then 1
+                when 'rejected' then 2
+                else 3
+            end,
+            a.requested_at desc
+        limit %(limit)s
+        """
+        with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {"status": status, "limit": limit})
+                rows = cur.fetchall()
+
+        return [self._map_approval_row(row) for row in rows]
+
     def create_incident_escalation_request(
         self,
         *,

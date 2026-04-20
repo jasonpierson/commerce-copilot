@@ -98,6 +98,7 @@ class QueryResponseData(BaseModel):
     product: ProductMatch | None = None
     inventory_results: list[InventoryResult] = Field(default_factory=list)
     approval: ApprovalRecord | None = None
+    approvals: list[ApprovalRecord] = Field(default_factory=list)
     approval_audit: list["ApprovalAuditEvent"] = Field(default_factory=list)
     incident: IncidentRecord | None = None
     incident_timeline: list[IncidentEvent] = Field(default_factory=list)
@@ -206,6 +207,10 @@ class ApprovalAuditData(BaseModel):
     audit_events: list[ApprovalAuditEvent] = Field(default_factory=list)
 
 
+class ApprovalListData(BaseModel):
+    approvals: list[ApprovalRecord] = Field(default_factory=list)
+
+
 class ApprovalRequestResponse(BaseModel):
     request_id: str
     status: Literal["success"] = "success"
@@ -235,4 +240,12 @@ class ApprovalAuditResponse(BaseModel):
     status: Literal["success"] = "success"
     route_type: Literal["approval_audit"] = "approval_audit"
     data: ApprovalAuditData
+    meta: QueryResponseMeta
+
+
+class ApprovalListResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["approval_list"] = "approval_list"
+    data: ApprovalListData
     meta: QueryResponseMeta
