@@ -77,6 +77,21 @@ class IncidentEvent(BaseModel):
     event_summary: str
 
 
+class ApiLink(BaseModel):
+    rel: str
+    href: str
+    method: Literal["GET", "POST"] = "GET"
+    description: str | None = None
+
+
+class ApprovalSuggestion(BaseModel):
+    action_type: Literal["incident_escalation"] = "incident_escalation"
+    reason: str
+    proposed_priority: EscalationPriority
+    incident_code: str
+    create_request: ApiLink
+
+
 class QueryResponseData(BaseModel):
     answer: str
     citations: list[Citation] = Field(default_factory=list)
@@ -86,6 +101,8 @@ class QueryResponseData(BaseModel):
     incident_timeline: list[IncidentEvent] = Field(default_factory=list)
     customer_impact: str | None = None
     recommended_next_step: str | None = None
+    links: list[ApiLink] = Field(default_factory=list)
+    approval_suggestion: ApprovalSuggestion | None = None
 
 
 class QueryResponseMeta(BaseModel):
@@ -147,7 +164,7 @@ class ApprovalDecisionRequest(BaseModel):
     decision: ApprovalDecisionValue
     decision_notes: str | None = None
     decider_user_id: str = Field(default="demo-ops-manager-001")
-    decider_role: ApproverUserRole = Field(default="ops_manager")
+    decider_role: SupportedUserRole = Field(default="ops_manager")
 
 
 class ApprovalRecord(BaseModel):

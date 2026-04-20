@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.api.approval_service import ApprovalNotFoundError
+from app.api.approval_service import ApprovalConflictError, ApprovalNotFoundError, ApprovalPermissionError
 from app.api.main import app
 from app.api.query_service import QueryService
 from app.api.schemas import (
@@ -52,6 +52,34 @@ SEEDED_TIMELINE = [
     ),
 ]
 
+ACTIVE_INCIDENT = IncidentRecord(
+    incident_id="inc_1091",
+    incident_code="INC-1091",
+    title="Payment Authorization Timeout",
+    status="mitigated",
+    severity="sev1",
+    service_area="payments",
+    summary="Payment authorization calls timed out for a large share of checkout attempts.",
+    customer_impact="Customers saw widespread checkout failures and duplicate retry attempts during the incident window.",
+    start_time=datetime(2026, 4, 19, 16, 5, tzinfo=UTC),
+    resolved_time=None,
+)
+
+ACTIVE_TIMELINE = [
+    IncidentEvent(
+        event_time=datetime(2026, 4, 19, 16, 9, tzinfo=UTC),
+        event_type="investigation_started",
+        actor="Sam Rivera",
+        event_summary="Payment provider timeouts reproduced in checkout logs and alerting.",
+    ),
+    IncidentEvent(
+        event_time=datetime(2026, 4, 19, 16, 31, tzinfo=UTC),
+        event_type="customer_impact_updated",
+        actor="Casey Nguyen",
+        event_summary="Support guidance refreshed with retry limits and payment-workaround messaging.",
+    ),
+]
+
 
 class FakeInventoryService:
     def lookup_inventory(self, product_query: str) -> InventoryLookupOutcome:
@@ -94,6 +122,18 @@ class FakeIncidentService:
     def get_incident_timeline(self, incident_id: str) -> list[IncidentEvent]:
         if incident_id == SEEDED_INCIDENT.incident_id:
             return SEEDED_TIMELINE
+        return []
+
+
+class FakeActiveIncidentService:
+    def get_incident(self, incident_code: str) -> IncidentRecord | None:
+        if incident_code.upper() == "INC-1091":
+            return ACTIVE_INCIDENT
+        return None
+
+    def get_incident_timeline(self, incident_id: str) -> list[IncidentEvent]:
+        if incident_id == ACTIVE_INCIDENT.incident_id:
+            return ACTIVE_TIMELINE
         return []
 
 
@@ -163,6 +203,12 @@ class FakeApprovalService:
         request_id: str,
     ) -> ApprovalRecord:
         record = self.get_approval_status(approval_id)
+        if decider_role not in {"ops_manager", "admin"}:
+            raise ApprovalPermissionError("Only ops managers or admins may decide approvals.")
+        if record.status != "pending":
+            raise ApprovalConflictError(
+                f"Approval {approval_id} is already {record.status} and cannot be decided again."
+            )
         updated = record.model_copy(
             update={
                 "status": decision,
@@ -270,6 +316,46 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["data"]["incident"]["incident_code"], "INC-1042")
         self.assertEqual(payload["data"]["recommended_next_step"], "Publish the final incident summary and capture any follow-up remediation from the timeline.")
         self.assertEqual(payload["meta"]["tools_used"], ["get_incident", "get_incident_timeline"])
+        self.assertEqual(payload["data"]["links"][0]["href"], "/api/v1/incidents/INC-1042")
+        self.assertIsNone(payload["data"]["approval_suggestion"])
+
+    def test_query_incident_summary_exposes_approval_suggestion_for_active_incident(self) -> None:
+        retrieval_results = [
+            RetrievalResult(
+                document_id="doc_3",
+                doc_key="runbook_checkout_incident_001",
+                title="Checkout Incident Runbook",
+                doc_type="runbook",
+                audience="engineering_support",
+                section_title="Mitigation Guidance",
+                chunk_index=0,
+                chunk_text=(
+                    "Title: Checkout Incident Runbook\n"
+                    "Section: Mitigation Guidance\n"
+                    "Content: Keep mitigation active while customer impact remains elevated."
+                ),
+                relevance_score=0.84,
+            )
+        ]
+
+        with patch(
+            "app.api.query_service.IncidentService.from_env",
+            return_value=FakeActiveIncidentService(),
+        ), patch.object(QueryService, "_retrieve_context", return_value=retrieval_results):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Summarize incident INC-1091 and tell me the likely customer impact.",
+                    "user_role": "engineering_support",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["data"]["links"][0]["href"], "/api/v1/incidents/INC-1091")
+        self.assertEqual(payload["data"]["links"][1]["href"], "/api/v1/escalations")
+        self.assertEqual(payload["data"]["approval_suggestion"]["action_type"], "incident_escalation")
+        self.assertEqual(payload["data"]["approval_suggestion"]["proposed_priority"], "critical")
 
     def test_escalation_flow_create_get_and_decide(self) -> None:
         fake_approval_service = FakeApprovalService()
@@ -329,3 +415,90 @@ class ApiWorkflowTests(TestCase):
             decided["data"]["approval"]["decision_notes"],
             "Escalation justified based on impact.",
         )
+
+    def test_escalation_decision_rejects_non_approver_role(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_incident_service = FakeIncidentService()
+
+        with patch(
+            "app.api.approval_router.IncidentService.from_env",
+            return_value=fake_incident_service,
+        ), patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            create_response = self.client.post(
+                "/api/v1/escalations",
+                json={
+                    "incident_code": "INC-1042",
+                    "escalation_reason": "Customer impact is growing and mitigation is incomplete.",
+                    "proposed_priority": "high",
+                    "draft_summary": "Recommend escalation due to sustained checkout failures.",
+                    "requested_by_role": "engineering_support",
+                },
+            )
+            approval_id = create_response.json()["data"]["approval"]["approval_id"]
+
+        with patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                f"/api/v1/approvals/{approval_id}/decision",
+                json={
+                    "decision": "approved",
+                    "decision_notes": "Trying to self-approve.",
+                    "decider_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"]["code"], "APPROVAL_PERMISSION_DENIED")
+
+    def test_escalation_decision_rejects_duplicate_decision(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_incident_service = FakeIncidentService()
+
+        with patch(
+            "app.api.approval_router.IncidentService.from_env",
+            return_value=fake_incident_service,
+        ), patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            create_response = self.client.post(
+                "/api/v1/escalations",
+                json={
+                    "incident_code": "INC-1042",
+                    "escalation_reason": "Customer impact is growing and mitigation is incomplete.",
+                    "proposed_priority": "high",
+                    "draft_summary": "Recommend escalation due to sustained checkout failures.",
+                    "requested_by_role": "engineering_support",
+                },
+            )
+            approval_id = create_response.json()["data"]["approval"]["approval_id"]
+
+        with patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            first_response = self.client.post(
+                f"/api/v1/approvals/{approval_id}/decision",
+                json={
+                    "decision": "approved",
+                    "decision_notes": "Escalation justified based on impact.",
+                    "decider_role": "ops_manager",
+                },
+            )
+            second_response = self.client.post(
+                f"/api/v1/approvals/{approval_id}/decision",
+                json={
+                    "decision": "approved",
+                    "decision_notes": "Trying to approve again.",
+                    "decider_role": "ops_manager",
+                },
+            )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 409)
+        self.assertEqual(second_response.json()["error"]["code"], "APPROVAL_CONFLICT")

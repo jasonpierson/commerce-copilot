@@ -308,7 +308,7 @@ class ApprovalService:
         *,
         approval_id: str,
         decider_user_id: str,
-        decider_role: ApproverUserRole,
+        decider_role: SupportedUserRole,
         decision: str,
         decision_notes: str | None,
         request_id: str,

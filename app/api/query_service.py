@@ -8,6 +8,8 @@ from uuid import uuid4
 from app.api.incident_service import IncidentService
 from app.api.inventory_service import InventoryService
 from app.api.schemas import (
+    ApiLink,
+    ApprovalSuggestion,
     Citation,
     IncidentEvent,
     IncidentRecord,
@@ -132,6 +134,19 @@ class QueryService:
         related = " ".join(point for point in supporting_points[1:] if point)
         return f"{primary}\n\nSupporting context: {related}".strip()
 
+    def _build_incident_links(self, incident: IncidentRecord | None) -> list[ApiLink]:
+        if not incident:
+            return []
+
+        return [
+            ApiLink(
+                rel="incident_detail",
+                href=f"/api/v1/incidents/{incident.incident_code}",
+                method="GET",
+                description="View the structured incident record and full timeline.",
+            )
+        ]
+
     def _build_citations(self, retrieval_results: list[RetrievalResult]) -> list[Citation]:
         citations: list[Citation] = []
         seen: set[tuple[str, str | None]] = set()
@@ -188,6 +203,40 @@ class QueryService:
             return "Publish the final incident summary and capture follow-up remediation."
 
         return "Continue updating the incident record with status changes and next actions."
+
+    def _build_approval_suggestion(
+        self,
+        incident: IncidentRecord | None,
+    ) -> ApprovalSuggestion | None:
+        if not incident:
+            return None
+
+        status = incident.status.lower()
+        severity = incident.severity.lower()
+        impact = (incident.customer_impact or "").lower()
+
+        if status not in {"open", "investigating", "mitigated"}:
+            return None
+
+        if severity not in {"sev1", "sev2"} and "elevated" not in impact and "widespread" not in impact:
+            return None
+
+        proposed_priority = "critical" if severity == "sev1" else "high"
+        reason = (
+            f"{incident.incident_code} is still {incident.status} with {incident.severity.upper()} impact. "
+            "Create a pending escalation approval request if the incident needs management-level attention."
+        )
+        return ApprovalSuggestion(
+            reason=reason,
+            proposed_priority=proposed_priority,
+            incident_code=incident.incident_code,
+            create_request=ApiLink(
+                rel="approval_request",
+                href="/api/v1/escalations",
+                method="POST",
+                description="Create a pending approval request for an incident escalation.",
+            ),
+        )
 
     def _build_incident_answer(
         self,
@@ -330,6 +379,10 @@ class QueryService:
                 timeline=timeline,
             )
             recommended_next_step = self._build_incident_next_step(incident, timeline)
+            approval_suggestion = self._build_approval_suggestion(incident)
+            links = self._build_incident_links(incident)
+            if approval_suggestion:
+                links.append(approval_suggestion.create_request)
 
             return QueryResponse(
                 request_id=request_id,
@@ -341,6 +394,8 @@ class QueryService:
                     incident_timeline=timeline,
                     customer_impact=incident.customer_impact if incident else None,
                     recommended_next_step=recommended_next_step,
+                    links=links,
+                    approval_suggestion=approval_suggestion,
                 ),
                 meta=QueryResponseMeta(
                     citations_included=bool(citations),
