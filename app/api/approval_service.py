@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.api.db import connect, require_dsn
 from app.api.schemas import (
+    ApprovalAuditEvent,
     ApprovalRecord,
     ApprovalStatusValue,
     ApproverUserRole,
@@ -194,6 +195,30 @@ class ApprovalService:
             payload=row.get("payload") or {},
         )
 
+    def _map_audit_row(self, row) -> ApprovalAuditEvent:
+        actor = None
+        actor_id = row.get("actor_user_id")
+        if actor_id:
+            actor = UserSummary(
+                user_id=actor_id,
+                full_name=row.get("actor_full_name") or "Unknown User",
+                role=row.get("actor_role") or "support_analyst",
+                email=row.get("actor_email"),
+            )
+
+        return ApprovalAuditEvent(
+            audit_event_id=row["audit_event_id"],
+            event_type=row["event_type"],
+            occurred_at=row["occurred_at"],
+            route_type=row.get("route_type"),
+            tool_name=row.get("tool_name"),
+            request_id=row.get("request_id"),
+            actor=actor,
+            target_type=row.get("target_type"),
+            target_id=row.get("target_id"),
+            payload=row.get("payload") or {},
+        )
+
     def get_approval_status(self, approval_id: str) -> ApprovalRecord:
         sql = """
         select
@@ -229,6 +254,90 @@ class ApprovalService:
 
         if not row:
             raise ApprovalNotFoundError(f"Approval {approval_id} was not found.")
+
+        return self._map_approval_row(row)
+
+    def get_approval_audit(self, approval_id: str) -> list[ApprovalAuditEvent]:
+        approval = self.get_approval_status(approval_id)
+        sql = """
+        select
+            ae.id::text as audit_event_id,
+            ae.event_type,
+            ae.created_at as occurred_at,
+            ae.request_id,
+            ae.route_type,
+            ae.tool_name,
+            ae.target_type,
+            ae.target_id,
+            ae.event_payload_json as payload,
+            actor.id::text as actor_user_id,
+            actor.full_name as actor_full_name,
+            actor.role as actor_role,
+            actor.email as actor_email
+        from public.audit_events ae
+        left join public.users actor
+          on actor.id = ae.user_id
+        where (
+                ae.event_payload_json ->> 'approval_id' = %(approval_id)s
+             or (
+                    ae.event_type = 'approval_requested'
+                and ae.target_id = %(target_id)s
+                and (ae.event_payload_json ->> 'incident_code') = %(incident_code)s
+             )
+        )
+        order by ae.created_at asc
+        """
+        with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {
+                        "approval_id": approval_id,
+                        "target_id": approval.target_id,
+                        "incident_code": approval.payload.get("incident_code"),
+                    },
+                )
+                rows = cur.fetchall()
+
+        return [self._map_audit_row(row) for row in rows]
+
+    def get_latest_incident_approval(self, incident_id: str) -> ApprovalRecord | None:
+        sql = """
+        select
+            a.id::text as approval_id,
+            a.status,
+            a.request_type,
+            a.target_type,
+            a.target_id,
+            a.requested_at,
+            a.decided_at,
+            a.decision_notes,
+            a.payload_json as payload,
+            requester.id::text as requester_user_id,
+            requester.full_name as requester_full_name,
+            requester.role as requester_role,
+            requester.email as requester_email,
+            approver.id::text as approver_user_id,
+            approver.full_name as approver_full_name,
+            approver.role as approver_role,
+            approver.email as approver_email
+        from public.approvals a
+        left join public.users requester
+          on requester.id = a.requested_by_user_id
+        left join public.users approver
+          on approver.id = a.approver_user_id
+        where a.target_type = 'incident'
+          and a.target_id = %(incident_id)s
+        order by a.requested_at desc
+        limit 1
+        """
+        with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {"incident_id": incident_id})
+                row = cur.fetchone()
+
+        if not row:
+            return None
 
         return self._map_approval_row(row)
 
@@ -270,6 +379,7 @@ class ApprovalService:
         """
         approval_id = str(uuid4())
         payload = {
+            "approval_id": approval_id,
             "incident_code": incident_code,
             "escalation_reason": escalation_reason,
             "proposed_priority": proposed_priority,

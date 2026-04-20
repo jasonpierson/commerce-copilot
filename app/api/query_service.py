@@ -10,6 +10,7 @@ from app.api.incident_service import IncidentService
 from app.api.inventory_service import InventoryService
 from app.api.schemas import (
     ApiLink,
+    ApprovalAuditEvent,
     ApprovalRecord,
     ApprovalSuggestion,
     Citation,
@@ -107,6 +108,20 @@ class QueryService:
                 "who approved",
                 "who rejected",
                 "who decided",
+            )
+        )
+
+    def _is_approval_history_lookup(self, message: str) -> bool:
+        query = message.lower()
+        return any(
+            token in query
+            for token in (
+                "when was",
+                "approval history",
+                "audit",
+                "timeline",
+                "when did",
+                "what happened to approval",
             )
         )
 
@@ -218,6 +233,79 @@ class QueryService:
                 )
             )
         return links
+
+    def _build_approval_audit_links(self, approval: ApprovalRecord | None) -> list[ApiLink]:
+        if not approval:
+            return []
+        return [
+            ApiLink(
+                rel="approval_audit",
+                href=f"/api/v1/approvals/{approval.approval_id}/audit",
+                method="GET",
+                description="View the audit trail for this approval request.",
+            )
+        ]
+
+    def _dedupe_links(self, links: list[ApiLink]) -> list[ApiLink]:
+        deduped: list[ApiLink] = []
+        seen: set[tuple[str, str, str]] = set()
+        for link in links:
+            key = (link.rel, link.href, link.method)
+            if key in seen:
+                continue
+            deduped.append(link)
+            seen.add(key)
+        return deduped
+
+    def _build_incident_approval_summary(self, approval: ApprovalRecord | None) -> str | None:
+        if not approval:
+            return None
+        approver_name = approval.approver.full_name if approval.approver else "an approver"
+        if approval.status == "pending":
+            return (
+                f"Linked approval {approval.approval_id} is still pending with {approver_name} as the current approver."
+            )
+        decided_at = approval.decided_at.isoformat() if approval.decided_at else "an earlier time"
+        return (
+            f"Linked approval {approval.approval_id} is {approval.status}; {approver_name} recorded the decision at {decided_at}."
+        )
+
+    def _build_approval_history_answer(
+        self,
+        message: str,
+        approval: ApprovalRecord,
+        audit_events: list[ApprovalAuditEvent],
+    ) -> str:
+        query = message.lower()
+        if not audit_events:
+            return (
+                f"Approval {approval.approval_id} is currently {approval.status}, but I couldn't find audit events yet."
+            )
+
+        if "when was" in query or "when did" in query:
+            if "approve" in query and approval.decided_at and approval.status == "approved":
+                return f"Approval {approval.approval_id} was approved at {approval.decided_at.isoformat()}."
+            if "reject" in query and approval.decided_at and approval.status == "rejected":
+                return f"Approval {approval.approval_id} was rejected at {approval.decided_at.isoformat()}."
+            requested_event = next(
+                (event for event in audit_events if event.event_type == "approval_requested"),
+                audit_events[0],
+            )
+            return f"Approval {approval.approval_id} was requested at {requested_event.occurred_at.isoformat()}."
+
+        history_lines = [
+            f"{event.occurred_at.isoformat()} - {event.event_type.replace('_', ' ')}"
+            + (
+                f" by {event.actor.full_name}"
+                if event.actor
+                else ""
+            )
+            for event in audit_events
+        ]
+        return (
+            f"Approval {approval.approval_id} history:\n\n"
+            + "\n".join(history_lines)
+        )
 
     def _build_approval_answer(self, message: str, approval: ApprovalRecord) -> str:
         if self._is_approval_actor_lookup(message):
@@ -505,6 +593,7 @@ class QueryService:
             incident_code = self._extract_incident_code(request.message)
             incident: IncidentRecord | None = None
             timeline: list[IncidentEvent] = []
+            linked_approval: ApprovalRecord | None = None
             tools_used: list[str] = []
             retrieval_request = request
 
@@ -547,16 +636,29 @@ class QueryService:
                 raise
 
             citations = self._build_citations(retrieval_results)
+            if incident:
+                try:
+                    linked_approval = ApprovalService.from_env().get_latest_incident_approval(incident.incident_id)
+                except Exception:
+                    linked_approval = None
+                if linked_approval:
+                    tools_used.append("get_latest_incident_approval")
             answer = self._build_incident_answer(
                 retrieval_results,
                 incident=incident,
                 timeline=timeline,
             )
+            if linked_approval:
+                answer = f"{answer}\n\nApproval state: {self._build_incident_approval_summary(linked_approval)}"
             recommended_next_step = self._build_incident_next_step(incident, timeline)
             approval_suggestion = self._build_approval_suggestion(incident)
             links = self._build_incident_links(incident)
+            if linked_approval:
+                links.extend(self._build_approval_links(linked_approval))
+                links.extend(self._build_approval_audit_links(linked_approval))
             if approval_suggestion:
                 links.append(approval_suggestion.create_request)
+            links = self._dedupe_links(links)
 
             return QueryResponse(
                 request_id=request_id,
@@ -564,6 +666,7 @@ class QueryService:
                 data=QueryResponseData(
                     answer=answer,
                     citations=citations,
+                    approval=linked_approval,
                     incident=incident,
                     incident_timeline=timeline,
                     customer_impact=incident.customer_impact if incident else None,
@@ -574,7 +677,7 @@ class QueryService:
                 meta=QueryResponseMeta(
                     citations_included=bool(citations),
                     tools_used=tools_used,
-                    approval_involved=False,
+                    approval_involved=bool(linked_approval or approval_suggestion),
                 ),
             )
 
@@ -600,7 +703,8 @@ class QueryService:
                     )
 
                 try:
-                    approval = ApprovalService.from_env().get_approval_status(approval_id)
+                    approval_service = ApprovalService.from_env()
+                    approval = approval_service.get_approval_status(approval_id)
                 except ApprovalNotFoundError:
                     return QueryResponse(
                         request_id=request_id,
@@ -616,18 +720,31 @@ class QueryService:
                         ),
                     )
 
+                audit_events: list[ApprovalAuditEvent] = []
+                tools_used = ["get_approval_status"]
+                if self._is_approval_history_lookup(request.message):
+                    audit_events = approval_service.get_approval_audit(approval_id)
+                    tools_used.append("get_approval_audit")
+
                 return QueryResponse(
                     request_id=request_id,
                     route_type="structured_lookup",
                     data=QueryResponseData(
-                        answer=self._build_approval_answer(request.message, approval),
+                        answer=(
+                            self._build_approval_history_answer(request.message, approval, audit_events)
+                            if self._is_approval_history_lookup(request.message)
+                            else self._build_approval_answer(request.message, approval)
+                        ),
                         citations=[],
                         approval=approval,
-                        links=self._build_approval_links(approval),
+                        approval_audit=audit_events,
+                        links=self._dedupe_links(
+                            self._build_approval_links(approval) + self._build_approval_audit_links(approval)
+                        ),
                     ),
                     meta=QueryResponseMeta(
                         citations_included=False,
-                        tools_used=["get_approval_status"],
+                        tools_used=tools_used,
                         approval_involved=True,
                     ),
                 )
@@ -700,6 +817,7 @@ class QueryService:
             links = self._build_incident_links(incident)
             if approval_suggestion:
                 links.append(approval_suggestion.create_request)
+            links = self._dedupe_links(links)
 
             return QueryResponse(
                 request_id=request_id,

@@ -98,6 +98,7 @@ class QueryResponseData(BaseModel):
     product: ProductMatch | None = None
     inventory_results: list[InventoryResult] = Field(default_factory=list)
     approval: ApprovalRecord | None = None
+    approval_audit: list["ApprovalAuditEvent"] = Field(default_factory=list)
     incident: IncidentRecord | None = None
     incident_timeline: list[IncidentEvent] = Field(default_factory=list)
     customer_impact: str | None = None
@@ -183,8 +184,26 @@ class ApprovalRecord(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class ApprovalAuditEvent(BaseModel):
+    audit_event_id: str
+    event_type: str
+    occurred_at: datetime
+    route_type: str | None = None
+    tool_name: str | None = None
+    request_id: str | None = None
+    actor: UserSummary | None = None
+    target_type: str | None = None
+    target_id: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class ApprovalData(BaseModel):
     approval: ApprovalRecord
+
+
+class ApprovalAuditData(BaseModel):
+    approval: ApprovalRecord
+    audit_events: list[ApprovalAuditEvent] = Field(default_factory=list)
 
 
 class ApprovalRequestResponse(BaseModel):
@@ -208,4 +227,12 @@ class ApprovalDecisionResponse(BaseModel):
     status: Literal["success"] = "success"
     route_type: Literal["approval_decision"] = "approval_decision"
     data: ApprovalData
+    meta: QueryResponseMeta
+
+
+class ApprovalAuditResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["approval_audit"] = "approval_audit"
+    data: ApprovalAuditData
     meta: QueryResponseMeta

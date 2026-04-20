@@ -14,6 +14,8 @@ from app.api.approval_service import (
 )
 from app.api.incident_service import IncidentService
 from app.api.schemas import (
+    ApprovalAuditData,
+    ApprovalAuditResponse,
     ApprovalData,
     ApprovalDecisionRequest,
     ApprovalDecisionResponse,
@@ -146,6 +148,46 @@ def get_approval_status(approval_id: str) -> ApprovalStatusResponse | JSONRespon
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="APPROVAL_STATUS_FAILED",
             message="The backend could not load the approval status.",
+            details={"cause": type(exc).__name__},
+        )
+
+
+@router.get(
+    "/approvals/{approval_id}/audit",
+    response_model=ApprovalAuditResponse,
+    responses={
+        404: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
+def get_approval_audit(approval_id: str) -> ApprovalAuditResponse | JSONResponse:
+    request_id = f"req_{uuid4().hex[:12]}"
+    service = ApprovalService.from_env()
+    try:
+        approval = service.get_approval_status(approval_id)
+        audit_events = service.get_approval_audit(approval_id)
+        return ApprovalAuditResponse(
+            request_id=request_id,
+            data=ApprovalAuditData(approval=approval, audit_events=audit_events),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=["get_approval_status", "get_approval_audit"],
+                approval_involved=True,
+            ),
+        )
+    except ApprovalNotFoundError as exc:
+        return _error_response(
+            request_id=request_id,
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="APPROVAL_NOT_FOUND",
+            message=str(exc),
+        )
+    except Exception as exc:
+        return _error_response(
+            request_id=request_id,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="APPROVAL_AUDIT_FAILED",
+            message="The backend could not load the approval audit history.",
             details={"cause": type(exc).__name__},
         )
 
