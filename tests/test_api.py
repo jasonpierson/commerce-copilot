@@ -248,6 +248,99 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(len(payload["data"]["inventory_results"]), 2)
         self.assertEqual(payload["meta"]["tools_used"], ["resolve_product", "check_inventory"])
 
+    def test_query_approval_status_returns_structured_approval_record(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_approval_lookup",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "What is the status of approval apr_test_001?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertEqual(payload["data"]["approval"]["approval_id"], "apr_test_001")
+        self.assertEqual(payload["data"]["approval"]["status"], "pending")
+        self.assertEqual(payload["data"]["links"][0]["href"], "/api/v1/approvals/apr_test_001")
+        self.assertEqual(payload["data"]["links"][1]["href"], "/api/v1/incidents/INC-1042")
+        self.assertEqual(payload["meta"]["tools_used"], ["get_approval_status"])
+        self.assertTrue(payload["meta"]["approval_involved"])
+
+    def test_query_approval_status_without_id_returns_guidance(self) -> None:
+        response = self.client.post(
+            "/api/v1/query",
+            json={
+                "message": "Can you check the approval status for me?",
+                "user_role": "support_analyst",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("I need the approval ID", payload["data"]["answer"])
+        self.assertEqual(payload["meta"]["tools_used"], ["get_approval_status"])
+        self.assertTrue(payload["meta"]["approval_involved"])
+
+    def test_query_approval_actor_lookup_returns_natural_decision_summary(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_approval_actor_lookup",
+        )
+        fake_approval_service.decide_approval(
+            approval_id="apr_test_001",
+            decider_user_id="demo-ops-manager-001",
+            decider_role="ops_manager",
+            decision="rejected",
+            decision_notes="Escalation is not needed after mitigation stabilized.",
+            request_id="req_test_approval_actor_decision",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Who rejected approval apr_test_001?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("Dana Lee rejected approval apr_test_001.", payload["data"]["answer"])
+        self.assertIn("Escalation is not needed after mitigation stabilized.", payload["data"]["answer"])
+        self.assertEqual(payload["data"]["approval"]["status"], "rejected")
+        self.assertEqual(payload["meta"]["tools_used"], ["get_approval_status"])
+        self.assertTrue(payload["meta"]["approval_involved"])
+
     def test_incident_detail_endpoint_returns_incident_and_timeline(self) -> None:
         with patch(
             "app.api.incident_router.IncidentService.from_env",
@@ -356,6 +449,68 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["data"]["links"][1]["href"], "/api/v1/escalations")
         self.assertEqual(payload["data"]["approval_suggestion"]["action_type"], "incident_escalation")
         self.assertEqual(payload["data"]["approval_suggestion"]["proposed_priority"], "critical")
+
+    def test_query_escalation_guidance_blends_policy_and_active_incident_context(self) -> None:
+        retrieval_results = [
+            RetrievalResult(
+                document_id="doc_4",
+                doc_key="escalation_procedure_incident_escalation_001",
+                title="Incident Escalation Procedure",
+                doc_type="policy",
+                audience="ops_manager",
+                section_title="When Escalation Is Required",
+                chunk_index=0,
+                chunk_text=(
+                    "Title: Incident Escalation Procedure\n"
+                    "Section: When Escalation Is Required\n"
+                    "Content: Escalate when severe customer impact continues, mitigation is unstable, "
+                    "or leadership coordination is required."
+                ),
+                relevance_score=0.93,
+            ),
+            RetrievalResult(
+                document_id="doc_5",
+                doc_key="matrix_priority_escalation_001",
+                title="Priority Escalation Matrix",
+                doc_type="matrix",
+                audience="ops_manager",
+                section_title="High Priority Criteria",
+                chunk_index=1,
+                chunk_text=(
+                    "Title: Priority Escalation Matrix\n"
+                    "Section: High Priority Criteria\n"
+                    "Content: Use critical or high priority when the incident affects checkout revenue, "
+                    "cross-functional coordination, or widespread customer harm."
+                ),
+                relevance_score=0.89,
+            ),
+        ]
+
+        with patch(
+            "app.api.query_service.IncidentService.from_env",
+            return_value=FakeActiveIncidentService(),
+        ), patch.object(QueryService, "_retrieve_context", return_value=retrieval_results):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Should INC-1091 be escalated right now?",
+                    "user_role": "ops_manager",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "escalation_guidance")
+        self.assertEqual(payload["data"]["incident"]["incident_code"], "INC-1091")
+        self.assertIn("Recommended escalation posture", payload["data"]["answer"])
+        self.assertEqual(
+            payload["data"]["recommended_next_step"],
+            "Create a critical-priority approval request if INC-1091 needs management attention.",
+        )
+        self.assertEqual(payload["data"]["links"][0]["href"], "/api/v1/incidents/INC-1091")
+        self.assertEqual(payload["data"]["links"][1]["href"], "/api/v1/escalations")
+        self.assertEqual(payload["data"]["approval_suggestion"]["proposed_priority"], "critical")
+        self.assertTrue(payload["meta"]["approval_involved"])
 
     def test_escalation_flow_create_get_and_decide(self) -> None:
         fake_approval_service = FakeApprovalService()

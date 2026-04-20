@@ -97,6 +97,7 @@ class QueryResponseData(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     product: ProductMatch | None = None
     inventory_results: list[InventoryResult] = Field(default_factory=list)
+    approval: ApprovalRecord | None = None
     incident: IncidentRecord | None = None
     incident_timeline: list[IncidentEvent] = Field(default_factory=list)
     customer_impact: str | None = None

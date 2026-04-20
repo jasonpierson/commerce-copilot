@@ -5,10 +5,12 @@ from datetime import UTC, datetime
 import re
 from uuid import uuid4
 
+from app.api.approval_service import ApprovalNotFoundError, ApprovalService
 from app.api.incident_service import IncidentService
 from app.api.inventory_service import InventoryService
 from app.api.schemas import (
     ApiLink,
+    ApprovalRecord,
     ApprovalSuggestion,
     Citation,
     IncidentEvent,
@@ -37,7 +39,10 @@ class QueryService:
 
         query = request.message.lower()
 
-        if any(token in query for token in ("inventory", "in stock", "sku", "stock level", "approval status")):
+        if self._looks_like_approval_lookup(request.message):
+            return "structured_lookup"
+
+        if any(token in query for token in ("inventory", "in stock", "sku", "stock level")):
             return "structured_lookup"
 
         if any(token in query for token in ("escalate", "escalation", "high priority", "medium priority", "approve escalation")):
@@ -73,6 +78,49 @@ class QueryService:
         if not match:
             return None
         return match.group(1).upper()
+
+    def _extract_approval_id(self, message: str) -> str | None:
+        patterns = [
+            r"\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b",
+            r"\b(apr[_-][a-z0-9_-]+)\b",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, message, flags=re.IGNORECASE)
+            if match:
+                return match.group(1)
+        return None
+
+    def _looks_like_approval_lookup(self, message: str) -> bool:
+        query = message.lower()
+        if "approval" not in query:
+            return False
+        if "approve escalation" in query:
+            return False
+        return self._extract_approval_id(message) is not None or any(
+            token in query
+            for token in (
+                "approval status",
+                "status of approval",
+                "show approval",
+                "check approval",
+                "lookup approval",
+                "who approved",
+                "who rejected",
+                "who decided",
+            )
+        )
+
+    def _is_approval_actor_lookup(self, message: str) -> bool:
+        query = message.lower()
+        return any(
+            token in query
+            for token in (
+                "who approved",
+                "who rejected",
+                "who decided",
+                "who reviewed approval",
+            )
+        )
 
     def _build_incident_support_query(
         self,
@@ -146,6 +194,82 @@ class QueryService:
                 description="View the structured incident record and full timeline.",
             )
         ]
+
+    def _build_approval_links(self, approval: ApprovalRecord | None) -> list[ApiLink]:
+        if not approval:
+            return []
+
+        links = [
+            ApiLink(
+                rel="approval_status",
+                href=f"/api/v1/approvals/{approval.approval_id}",
+                method="GET",
+                description="View the structured approval record and current decision state.",
+            )
+        ]
+        incident_code = approval.payload.get("incident_code")
+        if incident_code:
+            links.append(
+                ApiLink(
+                    rel="incident_detail",
+                    href=f"/api/v1/incidents/{incident_code}",
+                    method="GET",
+                    description="View the incident tied to this approval request.",
+                )
+            )
+        return links
+
+    def _build_approval_answer(self, message: str, approval: ApprovalRecord) -> str:
+        if self._is_approval_actor_lookup(message):
+            approver_name = approval.approver.full_name if approval.approver else "an approver"
+            if approval.status == "approved":
+                return (
+                    f"{approver_name} approved approval {approval.approval_id}."
+                    + (
+                        f" Notes: {approval.decision_notes}"
+                        if approval.decision_notes
+                        else ""
+                    )
+                )
+            if approval.status == "rejected":
+                return (
+                    f"{approver_name} rejected approval {approval.approval_id}."
+                    + (
+                        f" Notes: {approval.decision_notes}"
+                        if approval.decision_notes
+                        else ""
+                    )
+                )
+            return (
+                f"Approval {approval.approval_id} is still pending, so no one has approved or rejected it yet."
+            )
+
+        request_type = approval.request_type.replace("_", " ")
+        summary = (
+            f"Approval {approval.approval_id} is currently {approval.status} for "
+            f"{request_type} on {approval.target_type} {approval.target_id}."
+        )
+
+        details: list[str] = []
+        incident_code = approval.payload.get("incident_code")
+        if incident_code:
+            details.append(f"Incident: {incident_code}")
+        proposed_priority = approval.payload.get("proposed_priority")
+        if proposed_priority:
+            details.append(f"Priority: {proposed_priority}")
+        if approval.requester:
+            details.append(f"Requested by: {approval.requester.full_name}")
+        if approval.approver:
+            details.append(f"Approver: {approval.approver.full_name}")
+        if approval.decision_notes:
+            details.append(f"Decision notes: {approval.decision_notes}")
+        if approval.next_step:
+            details.append(f"Next step: {approval.next_step}")
+
+        if not details:
+            return summary
+
+        return f"{summary}\n\n" + "\n".join(details)
 
     def _build_citations(self, retrieval_results: list[RetrievalResult]) -> list[Citation]:
         citations: list[Citation] = []
@@ -237,6 +361,56 @@ class QueryService:
                 description="Create a pending approval request for an incident escalation.",
             ),
         )
+
+    def _build_escalation_next_step(
+        self,
+        incident: IncidentRecord | None,
+        approval_suggestion: ApprovalSuggestion | None,
+    ) -> str | None:
+        if approval_suggestion:
+            return (
+                f"Create a {approval_suggestion.proposed_priority}-priority approval request "
+                f"if {approval_suggestion.incident_code} needs management attention."
+            )
+
+        if incident and incident.status.lower() == "resolved":
+            return "Document the closure rationale and only reopen escalation if customer impact returns."
+
+        if incident:
+            return "Review the escalation criteria against the latest timeline update before opening an approval."
+
+        return None
+
+    def _build_escalation_answer(
+        self,
+        retrieval_results: list[RetrievalResult],
+        *,
+        incident: IncidentRecord | None = None,
+        approval_suggestion: ApprovalSuggestion | None = None,
+    ) -> str:
+        guidance = self._build_answer(retrieval_results)
+
+        if not incident:
+            return guidance
+
+        status_summary = f"{incident.incident_code} is {incident.status} at {incident.severity.upper()} severity"
+        if incident.customer_impact:
+            status_summary += f" with customer impact noted as: {incident.customer_impact}"
+        else:
+            status_summary += "."
+
+        if approval_suggestion:
+            return (
+                f"{status_summary}\n\n"
+                f"Recommended escalation posture: {approval_suggestion.reason}\n\n"
+                f"Relevant policy guidance: {guidance}"
+            ).strip()
+
+        return (
+            f"{status_summary}\n\n"
+            "Escalation is not automatically recommended from the structured incident data yet. "
+            f"Use this policy context to decide the next step:\n\n{guidance}"
+        ).strip()
 
     def _build_incident_answer(
         self,
@@ -405,6 +579,59 @@ class QueryService:
             )
 
         if route_type == "structured_lookup":
+            approval_id = self._extract_approval_id(request.message)
+            if self._looks_like_approval_lookup(request.message):
+                if not approval_id:
+                    return QueryResponse(
+                        request_id=request_id,
+                        route_type="structured_lookup",
+                        data=QueryResponseData(
+                            answer=(
+                                "I can look up approval status through `/api/v1/query`, but I need the approval ID "
+                                "from `/api/v1/approvals/{approval_id}`."
+                            ),
+                            citations=[],
+                        ),
+                        meta=QueryResponseMeta(
+                            citations_included=False,
+                            tools_used=["get_approval_status"],
+                            approval_involved=True,
+                        ),
+                    )
+
+                try:
+                    approval = ApprovalService.from_env().get_approval_status(approval_id)
+                except ApprovalNotFoundError:
+                    return QueryResponse(
+                        request_id=request_id,
+                        route_type="structured_lookup",
+                        data=QueryResponseData(
+                            answer=f"I couldn't find approval {approval_id} in the structured approval data.",
+                            citations=[],
+                        ),
+                        meta=QueryResponseMeta(
+                            citations_included=False,
+                            tools_used=["get_approval_status"],
+                            approval_involved=True,
+                        ),
+                    )
+
+                return QueryResponse(
+                    request_id=request_id,
+                    route_type="structured_lookup",
+                    data=QueryResponseData(
+                        answer=self._build_approval_answer(request.message, approval),
+                        citations=[],
+                        approval=approval,
+                        links=self._build_approval_links(approval),
+                    ),
+                    meta=QueryResponseMeta(
+                        citations_included=False,
+                        tools_used=["get_approval_status"],
+                        approval_involved=True,
+                    ),
+                )
+
             product_query = self._extract_inventory_query(request.message)
             outcome = InventoryService.from_env().lookup_inventory(product_query)
             return QueryResponse(
@@ -423,11 +650,86 @@ class QueryService:
                 ),
             )
 
+        if route_type == "escalation_guidance":
+            incident_code = self._extract_incident_code(request.message)
+            incident: IncidentRecord | None = None
+            timeline: list[IncidentEvent] = []
+            tools_used: list[str] = []
+            retrieval_request = request
+
+            if incident_code:
+                incident_service = IncidentService.from_env()
+                incident = incident_service.get_incident(incident_code)
+                if incident:
+                    timeline = incident_service.get_incident_timeline(incident.incident_id)
+                    tools_used.extend(["get_incident", "get_incident_timeline"])
+                    retrieval_request = request.model_copy(
+                        update={
+                            "message": self._build_incident_support_query(
+                                request.message,
+                                incident,
+                            )
+                        }
+                    )
+                else:
+                    return QueryResponse(
+                        request_id=request_id,
+                        route_type="escalation_guidance",
+                        data=QueryResponseData(
+                            answer=f"I couldn't find incident {incident_code} in the structured incident data.",
+                            citations=[],
+                        ),
+                        meta=QueryResponseMeta(
+                            citations_included=False,
+                            tools_used=["get_incident"],
+                            approval_involved=False,
+                        ),
+                    )
+
+            try:
+                retrieval_results = self._retrieve_context(
+                    retrieval_request,
+                    route_type="escalation_guidance",
+                    request_id=request_id,
+                )
+            except RetrievalError:
+                raise
+
+            citations = self._build_citations(retrieval_results)
+            approval_suggestion = self._build_approval_suggestion(incident)
+            links = self._build_incident_links(incident)
+            if approval_suggestion:
+                links.append(approval_suggestion.create_request)
+
+            return QueryResponse(
+                request_id=request_id,
+                route_type="escalation_guidance",
+                data=QueryResponseData(
+                    answer=self._build_escalation_answer(
+                        retrieval_results,
+                        incident=incident,
+                        approval_suggestion=approval_suggestion,
+                    ),
+                    citations=citations,
+                    incident=incident,
+                    incident_timeline=timeline,
+                    customer_impact=incident.customer_impact if incident else None,
+                    recommended_next_step=self._build_escalation_next_step(incident, approval_suggestion),
+                    links=links,
+                    approval_suggestion=approval_suggestion,
+                ),
+                meta=QueryResponseMeta(
+                    citations_included=bool(citations),
+                    tools_used=tools_used,
+                    approval_involved=bool(approval_suggestion),
+                ),
+            )
+
         raise UnsupportedRouteError(
             route_type=route_type,
             message=(
                 "The `/query` route is currently wired for policy/process Q&A, "
-                "incident-summary retrieval, and inventory lookup only. "
+                "incident summaries, escalation guidance, and inventory lookup only. "
                 f"The request was classified as `{route_type}`."
             ),
         )
