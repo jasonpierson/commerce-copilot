@@ -45,6 +45,7 @@ class QueryService:
 
         if (
             self._is_pending_owner_lookup(request.message)
+            or self._is_approver_bottleneck_lookup(request.message)
             or self._is_requester_load_lookup(request.message)
             or self._is_escalation_load_lookup(request.message)
         ):
@@ -176,6 +177,22 @@ class QueryService:
                 "who's holding",
                 "who owns",
                 "who has",
+            )
+        )
+
+    def _is_approver_bottleneck_lookup(self, message: str) -> bool:
+        query = message.lower()
+        if "approval" not in query and "approver" not in query:
+            return False
+        return any(
+            token in query
+            for token in (
+                "which approver is the bottleneck",
+                "who is the bottleneck",
+                "who's the bottleneck",
+                "approver bottleneck",
+                "holding the most pending approvals",
+                "owns the most pending approvals",
             )
         )
 
@@ -633,6 +650,8 @@ class QueryService:
             metrics_line += (
                 f"; created in last 24h: {metrics.approvals_created_last_24h}"
                 f"; decided in last 24h: {metrics.approvals_decided_last_24h}"
+                f"; created in last 7d: {metrics.approvals_created_last_7d}"
+                f"; decided in last 7d: {metrics.approvals_decided_last_7d}"
             )
             if metrics.oldest_pending_age_minutes is not None:
                 metrics_line += f"; oldest pending age: {metrics.oldest_pending_age_minutes} minute(s)"
@@ -670,6 +689,34 @@ class QueryService:
         for owner in metrics.pending_by_owner:
             role = f" ({owner.approver_role})" if owner.approver_role else ""
             lines.append(f"- {owner.approver_name}{role}: {owner.pending_count}")
+        return "\n".join(lines)
+
+    def _build_approver_bottleneck_answer(
+        self,
+        metrics: ApprovalDashboardMetrics,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+    ) -> str:
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        if not metrics.pending_by_owner:
+            return f"I couldn't find an approver bottleneck{scope} right now."
+
+        top_owner = metrics.pending_by_owner[0]
+        top_role = f" ({top_owner.approver_role})" if top_owner.approver_role else ""
+        lines = [
+            f"The current approval bottleneck is {top_owner.approver_name}{top_role} with {top_owner.pending_count} pending approval(s){scope}."
+        ]
+        if len(metrics.pending_by_owner) > 1:
+            lines.append("Current pending approval load by approver:")
+            for owner in metrics.pending_by_owner:
+                role = f" ({owner.approver_role})" if owner.approver_role else ""
+                lines.append(f"- {owner.approver_name}{role}: {owner.pending_count}")
         return "\n".join(lines)
 
     def _build_requester_load_answer(
@@ -1114,6 +1161,7 @@ class QueryService:
             approval_id = self._extract_approval_id(request.message)
             if (
                 self._is_pending_owner_lookup(request.message)
+                or self._is_approver_bottleneck_lookup(request.message)
                 or self._is_requester_load_lookup(request.message)
                 or self._is_escalation_load_lookup(request.message)
                 or self._is_approval_dashboard_lookup(request.message)
@@ -1153,6 +1201,12 @@ class QueryService:
                         requester=requester_filter,
                     )
                     if self._is_pending_owner_lookup(request.message)
+                    else self._build_approver_bottleneck_answer(
+                        metrics,
+                        incident_code=incident_code_filter,
+                        requester=requester_filter,
+                    )
+                    if self._is_approver_bottleneck_lookup(request.message)
                     else self._build_requester_load_answer(
                         metrics,
                         incident_code=incident_code_filter,

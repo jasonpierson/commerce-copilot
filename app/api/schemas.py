@@ -248,6 +248,8 @@ class ApprovalDashboardMetrics(BaseModel):
     pending_count: int = 0
     approvals_created_last_24h: int = 0
     approvals_decided_last_24h: int = 0
+    approvals_created_last_7d: int = 0
+    approvals_decided_last_7d: int = 0
     oldest_pending_age_minutes: int | None = None
     pending_by_priority: dict[str, int] = Field(default_factory=dict)
     pending_by_owner: list[ApprovalPendingOwnerMetric] = Field(default_factory=list)

@@ -176,6 +176,7 @@ Show me all pending approvals.
 Show me rejected approvals for INC-1091.
 Show me the approval dashboard.
 Who is holding the pending approvals for INC-1091?
+Which approver is the bottleneck?
 Which requester is creating the most approval load?
 Which incidents have the most pending approval pressure?
 ```
@@ -191,11 +192,15 @@ Which incidents have the most pending approval pressure?
 - `pending_by_incident`
 - `approvals_created_last_24h`
 - `approvals_decided_last_24h`
+- `approvals_created_last_7d`
+- `approvals_decided_last_7d`
 
 Supported dashboard filters:
 - `incident_code`
 - `requester`
 - `page_size_per_bucket`
+
+For deployment hardening guidance, see `SECURITY.md`.
 
 ## Local Setup
 
@@ -341,6 +346,7 @@ Show me the approval dashboard.
 Who is holding the pending approvals for INC-1091?
 Which requester is creating the most approval load?
 Which incidents have the most pending approval pressure?
+Which approver is the bottleneck?
 ```
 
 ### 4. Run the local test suite

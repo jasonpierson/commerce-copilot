@@ -1,0 +1,82 @@
+# Security
+
+This project is currently optimized for local development and controlled smoke testing. A public GitHub repo does **not** automatically expose the application, but a public deployment without hardening would be risky.
+
+## Current Posture
+
+- Secrets are expected to live in `.env.local`, which should stay out of git.
+- The local FastAPI server is only reachable if you run it on a machine and expose a port.
+- Demo seed data is synthetic, but approval smoke tests can create live rows in the connected database.
+
+## Deployment-Hardening Checklist
+
+Use this list before exposing the API behind a public hostname.
+
+### 1. Authentication
+- Require authentication on every route, including `/api/v1/query`.
+- Prefer short-lived bearer tokens or session-backed auth from a trusted identity provider.
+- Split operator/admin permissions from read-only analyst permissions.
+- Treat approval decision routes as higher-sensitivity actions and require stronger role checks.
+
+### 2. Authorization
+- Enforce least privilege at the API layer and, where practical, at the database layer.
+- Limit who can create, approve, reject, or browse approvals.
+- Restrict incident and inventory reads if production data is sensitive.
+- Review service credentials so the app cannot do more than it needs.
+
+### 3. Rate Limits
+- Add per-IP and per-user rate limits, especially for `/api/v1/query`.
+- Use tighter limits on mutation routes like:
+  - `POST /api/v1/escalations`
+  - `POST /api/v1/approvals/{approval_id}/decision`
+- Add burst protection plus a rolling-window limit.
+- Return clear `429` responses and log repeated offenders.
+
+### 4. CORS
+- Keep CORS closed by default.
+- If you add a browser client, allow only known frontend origins.
+- Avoid wildcard origins on authenticated routes.
+- Recheck CORS rules separately for local, staging, and production.
+
+### 5. Logging and Auditability
+- Log authentication failures, authorization failures, and rate-limit events.
+- Keep approval request/decision audit trails enabled.
+- Redact secrets, tokens, and sensitive payload fields from logs.
+- Add request IDs and propagate them through API logs for incident debugging.
+
+### 6. Secrets and Config
+- Never commit `.env.local`, API keys, or database URLs.
+- Rotate keys used for demos if they were ever exposed.
+- Use separate credentials for local, staging, and production.
+- Prefer a managed secret store over flat env files in deployed environments.
+
+### 7. Network and Runtime Controls
+- Put the API behind HTTPS.
+- Prefer a reverse proxy or API gateway that can enforce auth and rate limits.
+- Restrict inbound access to trusted callers when possible.
+- Disable debug settings and verbose exception output in production.
+
+### 8. Database Safety
+- Use least-privilege DB credentials.
+- Keep approval/demo cleanup scripts restricted to trusted operators.
+- Review row-level protections if this moves to multi-tenant or mixed-sensitivity data.
+- Back up approval and audit tables before destructive maintenance workflows.
+
+## Operator Safety Notes
+
+- Use disposable approval requests for live smoke tests.
+- After live approval tests, run approval-only cleanup:
+
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python -m scripts.cleanup_demo_data --scope approvals --apply
+```
+
+- Prefer full cleanup only when you intentionally want to reset seeded operational data.
+
+## Security Reporting
+
+If this project is deployed publicly in the future, add a dedicated reporting contact and response policy here.

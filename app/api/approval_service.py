@@ -452,7 +452,14 @@ class ApprovalService:
             count(*) filter (
                 where a.decided_at is not null
                   and a.decided_at >= (now() at time zone 'utc') - interval '24 hours'
-            ) as approvals_decided_last_24h
+            ) as approvals_decided_last_24h,
+            count(*) filter (
+                where a.requested_at >= (now() at time zone 'utc') - interval '7 days'
+            ) as approvals_created_last_7d,
+            count(*) filter (
+                where a.decided_at is not null
+                  and a.decided_at >= (now() at time zone 'utc') - interval '7 days'
+            ) as approvals_decided_last_7d
         from public.approvals a
         left join public.users requester
           on requester.id = a.requested_by_user_id
@@ -554,6 +561,8 @@ class ApprovalService:
             pending_count=pending_count,
             approvals_created_last_24h=recent_row["approvals_created_last_24h"] or 0,
             approvals_decided_last_24h=recent_row["approvals_decided_last_24h"] or 0,
+            approvals_created_last_7d=recent_row["approvals_created_last_7d"] or 0,
+            approvals_decided_last_7d=recent_row["approvals_decided_last_7d"] or 0,
             oldest_pending_age_minutes=oldest_pending_age_minutes,
             pending_by_priority=dict(sorted(priority_counts.items())),
             pending_by_owner=owners,
