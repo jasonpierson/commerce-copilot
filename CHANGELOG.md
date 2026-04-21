@@ -24,14 +24,17 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - Basic auth/rate-limit recommendations in `README.md` for future public deployment
 - Approver-bottleneck answers in `/api/v1/query`, including questions like `Which approver is the bottleneck?`
 - Oldest-pending approval answers in `/api/v1/query`, including questions like `Which approver has the oldest pending item?`
+- Oldest-pending incident answers in `/api/v1/query`, including questions like `Which incident has the oldest pending approval?`
 - 7-day dashboard metrics for approvals created and decided
 - 7-day per-day approval trend buckets and oldest-pending-item metrics on the approval dashboard
 - Dedicated `SECURITY.md` deployment-hardening checklist for auth, rate limits, CORS, logging, and secret handling
+- A compact operator analytics section in `README.md` with example approval-ops prompts
 
 ### Changed
 - `/api/v1/query` dashboard responses now return grouped dashboard buckets plus structured dashboard metrics
 - Approval list and dashboard service methods now support requester-aware filtering
 - Dashboard metrics now report both 24-hour and 7-day approval activity windows
+- Dashboard-style `/api/v1/query` answers now render 7-day trend buckets as a clearer line-by-line summary
 - `README.md` now links to `SECURITY.md` near the top for easier visibility
 
 ## 2026-04-20 — `76ccb5d` — Expand approval browsing and dashboard APIs

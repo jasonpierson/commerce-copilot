@@ -1175,6 +1175,7 @@ class ApiWorkflowTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["route_type"], "structured_lookup")
         self.assertIn("Approval dashboard:", payload["data"]["answer"])
+        self.assertIn("7-day daily trend:", payload["data"]["answer"])
         self.assertEqual(len(payload["data"]["approval_dashboard"]), 3)
         self.assertEqual(payload["data"]["links"][0]["href"], "/api/v1/approvals/dashboard")
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_count"], 1)
@@ -1381,6 +1382,37 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["route_type"], "structured_lookup")
         self.assertIn("The oldest pending approval item is currently with Dana Lee (ops_manager):", payload["data"]["answer"])
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["oldest_pending_item"]["approver_name"], "Dana Lee")
+
+    def test_query_oldest_pending_incident_lookup_returns_incident_summary(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=ACTIVE_INCIDENT.incident_id,
+            incident_code=ACTIVE_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact remains elevated.",
+            proposed_priority="critical",
+            draft_summary="Escalate to management due to payment failures.",
+            request_id="req_test_query_oldest_pending_incident_1",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Which incident has the oldest pending approval?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("The incident with the oldest pending approval is INC-1091.", payload["data"]["answer"])
+        self.assertEqual(payload["data"]["approval_dashboard_metrics"]["oldest_pending_item"]["incident_code"], "INC-1091")
 
     def test_incident_detail_endpoint_returns_incident_and_timeline(self) -> None:
         with patch(

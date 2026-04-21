@@ -178,6 +178,20 @@ Show me all pending approvals.
 Show me rejected approvals for INC-1091.
 Show me the approval dashboard.
 Who is holding the pending approvals for INC-1091?
+Which incident has the oldest pending approval?
+Which approver has the oldest pending item?
+Which approver is the bottleneck?
+Which requester is creating the most approval load?
+Which incidents have the most pending approval pressure?
+```
+
+## Operator Analytics
+
+Use these prompts when you want a quick operational read on approval load without going straight to raw endpoints.
+
+```text
+Show me the approval dashboard.
+Which incident has the oldest pending approval?
 Which approver has the oldest pending item?
 Which approver is the bottleneck?
 Which requester is creating the most approval load?
