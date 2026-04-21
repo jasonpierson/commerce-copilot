@@ -237,6 +237,8 @@ class ApprovalOldestPendingItemMetric(BaseModel):
     approval_id: str
     approver_name: str
     approver_role: SupportedUserRole | None = None
+    requester_name: str | None = None
+    requester_role: SupportedUserRole | None = None
     incident_code: str | None = None
     requested_at: datetime
     pending_age_minutes: int = 0
@@ -259,6 +261,21 @@ class ApprovalDailyTrendBucket(BaseModel):
     approvals_decided: int = 0
 
 
+class ApprovalAgedIncidentMetric(BaseModel):
+    incident_code: str
+    pending_count: int = 0
+    oldest_pending_age_minutes: int = 0
+
+
+class ApprovalDashboardSummaryRisk(BaseModel):
+    risk_type: str
+    title: str
+    detail: str
+    metric_value: int | None = None
+    incident_code: str | None = None
+    approval_id: str | None = None
+
+
 class ApprovalDashboardMetrics(BaseModel):
     pending_count: int = 0
     approvals_created_last_24h: int = 0
@@ -272,6 +289,7 @@ class ApprovalDashboardMetrics(BaseModel):
     pending_by_requester: list[ApprovalRequesterLoadMetric] = Field(default_factory=list)
     pending_by_incident: list[ApprovalIncidentPressureMetric] = Field(default_factory=list)
     daily_trends_7d: list[ApprovalDailyTrendBucket] = Field(default_factory=list)
+    aged_pending_incidents: list[ApprovalAgedIncidentMetric] = Field(default_factory=list)
 
 
 class ApprovalDashboardData(BaseModel):
@@ -281,6 +299,15 @@ class ApprovalDashboardData(BaseModel):
     metrics: ApprovalDashboardMetrics = Field(default_factory=ApprovalDashboardMetrics)
     incident_code_filter: str | None = None
     requester_filter: str | None = None
+
+
+class ApprovalDashboardSummaryData(BaseModel):
+    answer: str
+    headline_metrics: ApprovalDashboardMetrics = Field(default_factory=ApprovalDashboardMetrics)
+    top_risks: list[ApprovalDashboardSummaryRisk] = Field(default_factory=list)
+    incident_code_filter: str | None = None
+    requester_filter: str | None = None
+    min_pending_age_minutes: int | None = None
 
 
 class ApprovalRequestResponse(BaseModel):
@@ -328,4 +355,12 @@ class ApprovalDashboardResponse(BaseModel):
     status: Literal["success"] = "success"
     route_type: Literal["approval_dashboard"] = "approval_dashboard"
     data: ApprovalDashboardData
+    meta: QueryResponseMeta
+
+
+class ApprovalDashboardSummaryResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["approval_dashboard_summary"] = "approval_dashboard_summary"
+    data: ApprovalDashboardSummaryData
     meta: QueryResponseMeta

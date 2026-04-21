@@ -46,7 +46,9 @@ class QueryService:
         if (
             self._is_pending_owner_lookup(request.message)
             or self._is_oldest_pending_item_lookup(request.message)
+            or self._is_oldest_pending_requester_lookup(request.message)
             or self._is_oldest_pending_incident_lookup(request.message)
+            or self._is_aged_pending_incident_lookup(request.message)
             or self._is_approver_bottleneck_lookup(request.message)
             or self._is_requester_load_lookup(request.message)
             or self._is_escalation_load_lookup(request.message)
@@ -197,6 +199,10 @@ class QueryService:
             )
         )
 
+    def _is_oldest_pending_requester_lookup(self, message: str) -> bool:
+        query = message.lower()
+        return "requester" in query and self._is_oldest_pending_item_lookup(message)
+
     def _is_oldest_pending_incident_lookup(self, message: str) -> bool:
         query = message.lower()
         if "pending" not in query or "approv" not in query:
@@ -209,6 +215,14 @@ class QueryService:
                 "waiting the longest",
                 "waiting longest",
             )
+        )
+
+    def _is_aged_pending_incident_lookup(self, message: str) -> bool:
+        query = message.lower()
+        return (
+            "incident" in query
+            and "pending approval" in query
+            and self._extract_min_pending_age_minutes(message) is not None
         )
 
     def _is_approver_bottleneck_lookup(self, message: str) -> bool:
@@ -258,6 +272,18 @@ class QueryService:
         for status in ("pending", "approved", "rejected"):
             if status in query:
                 return status
+        return None
+
+    def _extract_min_pending_age_minutes(self, message: str) -> int | None:
+        patterns = [
+            r"older than (?P<minutes>\d+)\s*(?:minute|minutes|min)\b",
+            r"over (?P<minutes>\d+)\s*(?:minute|minutes|min)\b",
+            r"at least (?P<minutes>\d+)\s*(?:minute|minutes|min)\b",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, message, flags=re.IGNORECASE)
+            if match:
+                return int(match.group("minutes"))
         return None
 
     def _extract_requester_filter(self, message: str) -> str | None:
@@ -712,6 +738,40 @@ class QueryService:
             lines.append(line)
         return "\n".join(lines)
 
+    def _build_dashboard_summary_answer(
+        self,
+        metrics: ApprovalDashboardMetrics,
+        *,
+        top_risk_details: list[str],
+        incident_code: str | None = None,
+        requester: str | None = None,
+        min_pending_age_minutes: int | None = None,
+    ) -> str:
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        if min_pending_age_minutes is not None:
+            scope_bits.append(f"min_age={min_pending_age_minutes}m")
+        scope = f" ({', '.join(scope_bits)})" if scope_bits else ""
+        lines = [
+            f"Approval dashboard summary{scope}: {metrics.pending_count} pending item(s), "
+            f"{metrics.approvals_created_last_24h} created in the last 24h, "
+            f"{metrics.approvals_decided_last_24h} decided in the last 24h."
+        ]
+        if top_risk_details:
+            lines.append("Top risks:")
+            for detail in top_risk_details:
+                lines.append(f"- {detail}")
+        if metrics.daily_trends_7d:
+            lines.append("7-day daily trend:")
+            for bucket in metrics.daily_trends_7d:
+                lines.append(
+                    f"- {bucket.bucket_date.isoformat()}: created {bucket.approvals_created}, decided {bucket.approvals_decided}"
+                )
+        return "\n".join(lines)
+
     def _build_pending_owner_answer(
         self,
         metrics: ApprovalDashboardMetrics,
@@ -759,6 +819,31 @@ class QueryService:
             f"{item.pending_age_minutes} minute(s)."
         )
 
+    def _build_oldest_pending_requester_answer(
+        self,
+        metrics: ApprovalDashboardMetrics,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+    ) -> str:
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        if not metrics.oldest_pending_item:
+            return f"I couldn't find a requester with the oldest pending approval{scope} right now."
+
+        item = metrics.oldest_pending_item
+        requester_role = f" ({item.requester_role})" if item.requester_role else ""
+        incident = f" for {item.incident_code}" if item.incident_code else ""
+        requester_name = item.requester_name or "Unknown requester"
+        return (
+            f"The requester with the oldest pending approval{scope} is {requester_name}{requester_role}. "
+            f"Approval {item.approval_id}{incident} has been pending for {item.pending_age_minutes} minute(s)."
+        )
+
     def _build_oldest_pending_incident_answer(
         self,
         metrics: ApprovalDashboardMetrics,
@@ -783,6 +868,30 @@ class QueryService:
             f"Approval {item.approval_id} has been pending with {item.approver_name}"
             f"{f' ({item.approver_role})' if item.approver_role else ''} for {item.pending_age_minutes} minute(s)."
         )
+
+    def _build_aged_pending_incidents_answer(
+        self,
+        incidents: list,
+        *,
+        min_pending_age_minutes: int,
+        requester: str | None = None,
+    ) -> str:
+        scope = f" for requester={requester}" if requester else ""
+        if not incidents:
+            return (
+                f"I couldn't find any incidents with pending approvals older than "
+                f"{min_pending_age_minutes} minute(s){scope}."
+            )
+        lines = [
+            f"I found {len(incidents)} incident(s) with pending approvals older than "
+            f"{min_pending_age_minutes} minute(s){scope}:"
+        ]
+        for incident in incidents:
+            lines.append(
+                f"- {incident.incident_code}: {incident.pending_count} pending approval(s), "
+                f"oldest age {incident.oldest_pending_age_minutes} minute(s)"
+            )
+        return "\n".join(lines)
 
     def _build_approver_bottleneck_answer(
         self,
@@ -873,6 +982,7 @@ class QueryService:
         status: str | None = None,
         incident_code: str | None = None,
         requester: str | None = None,
+        min_pending_age_minutes: int | None = None,
     ) -> str:
         params: dict[str, str] = {}
         if status:
@@ -881,6 +991,8 @@ class QueryService:
             params["incident_code"] = incident_code
         if requester:
             params["requester"] = requester
+        if min_pending_age_minutes is not None:
+            params["min_pending_age_minutes"] = str(min_pending_age_minutes)
         if not params:
             return ""
         return "?" + urlencode(params)
@@ -1255,7 +1367,9 @@ class QueryService:
             if (
                 self._is_pending_owner_lookup(request.message)
                 or self._is_oldest_pending_item_lookup(request.message)
+                or self._is_oldest_pending_requester_lookup(request.message)
                 or self._is_oldest_pending_incident_lookup(request.message)
+                or self._is_aged_pending_incident_lookup(request.message)
                 or self._is_approver_bottleneck_lookup(request.message)
                 or self._is_requester_load_lookup(request.message)
                 or self._is_escalation_load_lookup(request.message)
@@ -1264,6 +1378,7 @@ class QueryService:
                 approval_service = ApprovalService.from_env()
                 incident_code_filter = self._extract_incident_code(request.message)
                 requester_filter = self._extract_requester_filter(request.message)
+                min_pending_age_minutes = self._extract_min_pending_age_minutes(request.message)
                 buckets, metrics = approval_service.get_approval_dashboard(
                     incident_code=incident_code_filter,
                     requester=requester_filter,
@@ -1274,6 +1389,12 @@ class QueryService:
                 dashboard_href += self._build_query_string(
                     incident_code=incident_code_filter,
                     requester=requester_filter,
+                )
+                summary_href = "/api/v1/approvals/dashboard/summary"
+                summary_href += self._build_query_string(
+                    incident_code=incident_code_filter,
+                    requester=requester_filter,
+                    min_pending_age_minutes=min_pending_age_minutes,
                 )
                 dashboard_links = [
                     ApiLink(
@@ -1288,51 +1409,74 @@ class QueryService:
                         method="GET",
                         description="Browse the full approval work queue.",
                     ),
+                    ApiLink(
+                        rel="approval_dashboard_summary",
+                        href=summary_href,
+                        method="GET",
+                        description="View headline approval metrics and top risks first.",
+                    ),
                 ]
-                answer = (
-                    self._build_pending_owner_answer(
-                        metrics,
-                        incident_code=incident_code_filter,
+                if self._is_aged_pending_incident_lookup(request.message):
+                    aged_incidents = approval_service.list_incidents_with_pending_approvals_older_than(
+                        min_pending_age_minutes=min_pending_age_minutes or 0,
                         requester=requester_filter,
                     )
-                    if self._is_pending_owner_lookup(request.message)
-                    else self._build_oldest_pending_incident_answer(
-                        metrics,
-                        incident_code=incident_code_filter,
+                    answer = self._build_aged_pending_incidents_answer(
+                        aged_incidents,
+                        min_pending_age_minutes=min_pending_age_minutes or 0,
                         requester=requester_filter,
                     )
-                    if self._is_oldest_pending_incident_lookup(request.message)
-                    else self._build_oldest_pending_item_answer(
-                        metrics,
-                        incident_code=incident_code_filter,
-                        requester=requester_filter,
+                else:
+                    answer = (
+                        self._build_pending_owner_answer(
+                            metrics,
+                            incident_code=incident_code_filter,
+                            requester=requester_filter,
+                        )
+                        if self._is_pending_owner_lookup(request.message)
+                        else self._build_oldest_pending_requester_answer(
+                            metrics,
+                            incident_code=incident_code_filter,
+                            requester=requester_filter,
+                        )
+                        if self._is_oldest_pending_requester_lookup(request.message)
+                        else self._build_oldest_pending_incident_answer(
+                            metrics,
+                            incident_code=incident_code_filter,
+                            requester=requester_filter,
+                        )
+                        if self._is_oldest_pending_incident_lookup(request.message)
+                        else self._build_oldest_pending_item_answer(
+                            metrics,
+                            incident_code=incident_code_filter,
+                            requester=requester_filter,
+                        )
+                        if self._is_oldest_pending_item_lookup(request.message)
+                        else self._build_approver_bottleneck_answer(
+                            metrics,
+                            incident_code=incident_code_filter,
+                            requester=requester_filter,
+                        )
+                        if self._is_approver_bottleneck_lookup(request.message)
+                        else self._build_requester_load_answer(
+                            metrics,
+                            incident_code=incident_code_filter,
+                            requester=requester_filter,
+                        )
+                        if self._is_requester_load_lookup(request.message)
+                        else self._build_escalation_load_answer(
+                            metrics,
+                            incident_code=incident_code_filter,
+                            requester=requester_filter,
+                        )
+                        if self._is_escalation_load_lookup(request.message)
+                        else self._build_approval_dashboard_answer(
+                            buckets,
+                            metrics,
+                            incident_code=incident_code_filter,
+                            requester=requester_filter,
+                        )
                     )
-                    if self._is_oldest_pending_item_lookup(request.message)
-                    else self._build_approver_bottleneck_answer(
-                        metrics,
-                        incident_code=incident_code_filter,
-                        requester=requester_filter,
-                    )
-                    if self._is_approver_bottleneck_lookup(request.message)
-                    else self._build_requester_load_answer(
-                        metrics,
-                        incident_code=incident_code_filter,
-                        requester=requester_filter,
-                    )
-                    if self._is_requester_load_lookup(request.message)
-                    else self._build_escalation_load_answer(
-                        metrics,
-                        incident_code=incident_code_filter,
-                        requester=requester_filter,
-                    )
-                    if self._is_escalation_load_lookup(request.message)
-                    else self._build_approval_dashboard_answer(
-                        buckets,
-                        metrics,
-                        incident_code=incident_code_filter,
-                        requester=requester_filter,
-                    )
-                )
                 return QueryResponse(
                     request_id=request_id,
                     route_type="structured_lookup",

@@ -8,11 +8,13 @@ from uuid import uuid4
 
 from app.api.db import connect, require_dsn
 from app.api.schemas import (
+    ApprovalAgedIncidentMetric,
     ApprovalAuditEvent,
     ApprovalDashboardBucket,
     ApprovalDailyTrendBucket,
     ApprovalIncidentPressureMetric,
     ApprovalDashboardMetrics,
+    ApprovalDashboardSummaryRisk,
     ApprovalOldestPendingItemMetric,
     ApprovalPendingOwnerMetric,
     ApprovalRequesterLoadMetric,
@@ -571,6 +573,12 @@ class ApprovalService:
                     else "Unassigned approver"
                 ),
                 approver_role=oldest_pending_approval.approver.role if oldest_pending_approval.approver else None,
+                requester_name=(
+                    oldest_pending_approval.requester.full_name
+                    if oldest_pending_approval.requester
+                    else "Unknown requester"
+                ),
+                requester_role=oldest_pending_approval.requester.role if oldest_pending_approval.requester else None,
                 incident_code=oldest_pending_approval.payload.get("incident_code"),
                 requested_at=oldest_pending_approval.requested_at,
                 pending_age_minutes=oldest_pending_age_minutes,
@@ -630,6 +638,29 @@ class ApprovalService:
                 key=lambda item: (-item[1], item[0]),
             )
         ]
+        aged_incident_metrics: list[ApprovalAgedIncidentMetric] = []
+        if pending_approvals:
+            aged_incident_map: dict[str, tuple[int, int]] = {}
+            now = datetime.now(UTC)
+            for approval in pending_approvals:
+                incident_key = approval.payload.get("incident_code") or "unknown_incident"
+                age_minutes = int(max((now - approval.requested_at).total_seconds(), 0) // 60)
+                existing = aged_incident_map.get(incident_key)
+                if existing is None:
+                    aged_incident_map[incident_key] = (1, age_minutes)
+                else:
+                    aged_incident_map[incident_key] = (existing[0] + 1, max(existing[1], age_minutes))
+            aged_incident_metrics = [
+                ApprovalAgedIncidentMetric(
+                    incident_code=incident_key,
+                    pending_count=values[0],
+                    oldest_pending_age_minutes=values[1],
+                )
+                for incident_key, values in sorted(
+                    aged_incident_map.items(),
+                    key=lambda item: (-item[1][1], -item[1][0], item[0]),
+                )
+            ]
         trends = [
             ApprovalDailyTrendBucket(
                 bucket_date=row["bucket_date"],
@@ -652,6 +683,7 @@ class ApprovalService:
             pending_by_requester=requesters,
             pending_by_incident=incidents,
             daily_trends_7d=trends,
+            aged_pending_incidents=aged_incident_metrics,
         )
 
     def get_approval_dashboard(
@@ -681,6 +713,97 @@ class ApprovalService:
             )
         metrics = self._build_pending_metrics(incident_code=incident_code, requester=requester)
         return buckets, metrics
+
+    def list_incidents_with_pending_approvals_older_than(
+        self,
+        *,
+        min_pending_age_minutes: int,
+        requester: str | None = None,
+    ) -> list[ApprovalAgedIncidentMetric]:
+        metrics = self._build_pending_metrics(requester=requester)
+        return [
+            incident
+            for incident in metrics.aged_pending_incidents
+            if incident.oldest_pending_age_minutes >= min_pending_age_minutes
+        ]
+
+    def get_approval_dashboard_summary(
+        self,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+        min_pending_age_minutes: int | None = None,
+    ) -> tuple[ApprovalDashboardMetrics, list[ApprovalDashboardSummaryRisk]]:
+        metrics = self._build_pending_metrics(incident_code=incident_code, requester=requester)
+        risks: list[ApprovalDashboardSummaryRisk] = []
+        if metrics.oldest_pending_item:
+            risks.append(
+                ApprovalDashboardSummaryRisk(
+                    risk_type="oldest_pending_item",
+                    title="Oldest pending approval",
+                    detail=(
+                        f"{metrics.oldest_pending_item.approval_id} for "
+                        f"{metrics.oldest_pending_item.incident_code or 'unknown incident'} has been pending "
+                        f"for {metrics.oldest_pending_item.pending_age_minutes} minute(s) with "
+                        f"{metrics.oldest_pending_item.approver_name}."
+                    ),
+                    metric_value=metrics.oldest_pending_item.pending_age_minutes,
+                    incident_code=metrics.oldest_pending_item.incident_code,
+                    approval_id=metrics.oldest_pending_item.approval_id,
+                )
+            )
+        if metrics.pending_by_owner:
+            top_owner = metrics.pending_by_owner[0]
+            risks.append(
+                ApprovalDashboardSummaryRisk(
+                    risk_type="approver_bottleneck",
+                    title="Approver bottleneck",
+                    detail=f"{top_owner.approver_name} is currently holding {top_owner.pending_count} pending approval(s).",
+                    metric_value=top_owner.pending_count,
+                )
+            )
+        if metrics.pending_by_incident:
+            top_incident = metrics.pending_by_incident[0]
+            risks.append(
+                ApprovalDashboardSummaryRisk(
+                    risk_type="incident_pressure",
+                    title="Highest incident approval pressure",
+                    detail=f"{top_incident.incident_code} has {top_incident.pending_count} pending approval(s).",
+                    metric_value=top_incident.pending_count,
+                    incident_code=top_incident.incident_code,
+                )
+            )
+        if metrics.pending_by_requester:
+            top_requester = metrics.pending_by_requester[0]
+            risks.append(
+                ApprovalDashboardSummaryRisk(
+                    risk_type="requester_load",
+                    title="Highest requester load",
+                    detail=f"{top_requester.requester_name} has created {top_requester.pending_count} pending approval(s).",
+                    metric_value=top_requester.pending_count,
+                )
+            )
+        if min_pending_age_minutes is not None:
+            aged_incidents = [
+                incident
+                for incident in metrics.aged_pending_incidents
+                if incident.oldest_pending_age_minutes >= min_pending_age_minutes
+            ]
+            for incident in aged_incidents[:3]:
+                risks.append(
+                    ApprovalDashboardSummaryRisk(
+                        risk_type="aged_incident_pressure",
+                        title="Aged incident approval",
+                        detail=(
+                            f"{incident.incident_code} has {incident.pending_count} pending approval(s), "
+                            f"oldest age {incident.oldest_pending_age_minutes} minute(s)."
+                        ),
+                        metric_value=incident.oldest_pending_age_minutes,
+                        incident_code=incident.incident_code,
+                    )
+                )
+        risks.sort(key=lambda risk: risk.metric_value or 0, reverse=True)
+        return metrics, risks
 
     def create_incident_escalation_request(
         self,

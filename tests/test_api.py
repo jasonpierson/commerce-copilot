@@ -10,9 +10,11 @@ from app.api.approval_service import ApprovalConflictError, ApprovalNotFoundErro
 from app.api.main import app
 from app.api.query_service import QueryService
 from app.api.schemas import (
+    ApprovalAgedIncidentMetric,
     ApprovalAuditEvent,
     ApprovalDailyTrendBucket,
     ApprovalDashboardMetrics,
+    ApprovalDashboardSummaryRisk,
     ApprovalIncidentPressureMetric,
     ApprovalOldestPendingItemMetric,
     ApprovalPendingOwnerMetric,
@@ -402,6 +404,8 @@ class FakeApprovalService:
                 approval_id=oldest.approval_id,
                 approver_name=oldest.approver.full_name if oldest.approver else "Unassigned approver",
                 approver_role=oldest.approver.role if oldest.approver else None,
+                requester_name=oldest.requester.full_name if oldest.requester else "Unknown requester",
+                requester_role=oldest.requester.role if oldest.requester else None,
                 incident_code=oldest.payload.get("incident_code"),
                 requested_at=oldest.requested_at,
                 pending_age_minutes=30,
@@ -453,8 +457,77 @@ class FakeApprovalService:
                 )
                 for offset in range(6, -1, -1)
             ],
+            aged_pending_incidents=[
+                ApprovalAgedIncidentMetric(
+                    incident_code=incident_code_key,
+                    pending_count=count,
+                    oldest_pending_age_minutes=30,
+                )
+                for incident_code_key, count in sorted(
+                    incident_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            ],
         )
         return buckets, metrics
+
+    def list_incidents_with_pending_approvals_older_than(
+        self,
+        *,
+        min_pending_age_minutes: int,
+        requester: str | None = None,
+    ):
+        _, metrics = self.get_approval_dashboard(requester=requester)
+        return [
+            incident
+            for incident in metrics.aged_pending_incidents
+            if incident.oldest_pending_age_minutes >= min_pending_age_minutes
+        ]
+
+    def get_approval_dashboard_summary(
+        self,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+        min_pending_age_minutes: int | None = None,
+    ):
+        _, metrics = self.get_approval_dashboard(incident_code=incident_code, requester=requester)
+        risks: list[ApprovalDashboardSummaryRisk] = []
+        if metrics.oldest_pending_item:
+            risks.append(
+                ApprovalDashboardSummaryRisk(
+                    risk_type="oldest_pending_item",
+                    title="Oldest pending approval",
+                    detail="Oldest pending approval risk.",
+                    metric_value=metrics.oldest_pending_item.pending_age_minutes,
+                    incident_code=metrics.oldest_pending_item.incident_code,
+                    approval_id=metrics.oldest_pending_item.approval_id,
+                )
+            )
+        if metrics.pending_by_owner:
+            risks.append(
+                ApprovalDashboardSummaryRisk(
+                    risk_type="approver_bottleneck",
+                    title="Approver bottleneck",
+                    detail="Approver bottleneck risk.",
+                    metric_value=metrics.pending_by_owner[0].pending_count,
+                )
+            )
+        if min_pending_age_minutes is not None:
+            for incident in self.list_incidents_with_pending_approvals_older_than(
+                min_pending_age_minutes=min_pending_age_minutes,
+                requester=requester,
+            )[:3]:
+                risks.append(
+                    ApprovalDashboardSummaryRisk(
+                        risk_type="aged_incident_pressure",
+                        title="Aged incident approval",
+                        detail="Aged incident risk.",
+                        metric_value=incident.oldest_pending_age_minutes,
+                        incident_code=incident.incident_code,
+                    )
+                )
+        return metrics, risks
 
 
 class ApiWorkflowTests(TestCase):
@@ -1054,6 +1127,34 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["data"]["metrics"]["approvals_created_last_24h"], 1)
         self.assertEqual(payload["data"]["metrics"]["approvals_created_last_7d"], 1)
 
+    def test_approval_dashboard_summary_endpoint_returns_headlines_and_top_risks(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=ACTIVE_INCIDENT.incident_id,
+            incident_code=ACTIVE_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="critical",
+            draft_summary="Escalate to management due to payment failures.",
+            request_id="req_test_dashboard_summary",
+        )
+
+        with patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.get("/api/v1/approvals/dashboard/summary?min_pending_age_minutes=15")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "approval_dashboard_summary")
+        self.assertIn("Approval summary:", payload["data"]["answer"])
+        self.assertEqual(payload["data"]["headline_metrics"]["pending_count"], 1)
+        self.assertGreaterEqual(len(payload["data"]["top_risks"]), 1)
+        self.assertEqual(payload["data"]["min_pending_age_minutes"], 15)
+        self.assertEqual(payload["meta"]["tools_used"], ["get_approval_dashboard_summary"])
+
     def test_query_approval_list_returns_pending_items(self) -> None:
         fake_approval_service = FakeApprovalService()
         fake_approval_service.create_incident_escalation_request(
@@ -1383,6 +1484,37 @@ class ApiWorkflowTests(TestCase):
         self.assertIn("The oldest pending approval item is currently with Dana Lee (ops_manager):", payload["data"]["answer"])
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["oldest_pending_item"]["approver_name"], "Dana Lee")
 
+    def test_query_oldest_pending_requester_lookup_returns_requester_summary(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=ACTIVE_INCIDENT.incident_id,
+            incident_code=ACTIVE_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact remains elevated.",
+            proposed_priority="critical",
+            draft_summary="Escalate to management due to payment failures.",
+            request_id="req_test_query_oldest_pending_requester_1",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Which requester has the oldest pending approval?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("The requester with the oldest pending approval is Morgan Support (support_analyst).", payload["data"]["answer"])
+        self.assertEqual(payload["data"]["approval_dashboard_metrics"]["oldest_pending_item"]["requester_name"], "Morgan Support")
+
     def test_query_oldest_pending_incident_lookup_returns_incident_summary(self) -> None:
         fake_approval_service = FakeApprovalService()
         fake_approval_service.create_incident_escalation_request(
@@ -1413,6 +1545,37 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["route_type"], "structured_lookup")
         self.assertIn("The incident with the oldest pending approval is INC-1091.", payload["data"]["answer"])
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["oldest_pending_item"]["incident_code"], "INC-1091")
+
+    def test_query_aged_pending_incidents_lookup_filters_by_minutes(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=ACTIVE_INCIDENT.incident_id,
+            incident_code=ACTIVE_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact remains elevated.",
+            proposed_priority="critical",
+            draft_summary="Escalate to management due to payment failures.",
+            request_id="req_test_query_aged_incidents_1",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Show me only incidents with pending approvals older than 15 minutes.",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("I found 1 incident(s) with pending approvals older than 15 minute(s):", payload["data"]["answer"])
+        self.assertIn("INC-1091", payload["data"]["answer"])
 
     def test_incident_detail_endpoint_returns_incident_and_timeline(self) -> None:
         with patch(

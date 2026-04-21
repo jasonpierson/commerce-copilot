@@ -17,6 +17,8 @@ from app.api.schemas import (
     ApprovalAuditData,
     ApprovalDashboardData,
     ApprovalDashboardResponse,
+    ApprovalDashboardSummaryData,
+    ApprovalDashboardSummaryResponse,
     ApprovalListData,
     ApprovalListResponse,
     ApprovalAuditResponse,
@@ -219,6 +221,56 @@ def get_approval_dashboard(
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="APPROVAL_DASHBOARD_FAILED",
             message="The backend could not load the approval dashboard.",
+            details={"cause": type(exc).__name__},
+        )
+
+
+@router.get(
+    "/approvals/dashboard/summary",
+    response_model=ApprovalDashboardSummaryResponse,
+    responses={
+        502: {"model": ErrorResponse},
+    },
+)
+def get_approval_dashboard_summary(
+    incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
+    requester: str | None = Query(default=None),
+    min_pending_age_minutes: int | None = Query(default=None, ge=0, le=100000),
+) -> ApprovalDashboardSummaryResponse | JSONResponse:
+    request_id = f"req_{uuid4().hex[:12]}"
+    try:
+        metrics, top_risks = ApprovalService.from_env().get_approval_dashboard_summary(
+            incident_code=incident_code,
+            requester=requester,
+            min_pending_age_minutes=min_pending_age_minutes,
+        )
+        answer = (
+            f"Approval summary: {metrics.pending_count} pending item(s); "
+            f"{metrics.approvals_created_last_24h} created in the last 24h; "
+            f"{metrics.approvals_decided_last_24h} decided in the last 24h."
+        )
+        return ApprovalDashboardSummaryResponse(
+            request_id=request_id,
+            data=ApprovalDashboardSummaryData(
+                answer=answer,
+                headline_metrics=metrics,
+                top_risks=top_risks,
+                incident_code_filter=incident_code,
+                requester_filter=requester,
+                min_pending_age_minutes=min_pending_age_minutes,
+            ),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=["get_approval_dashboard_summary"],
+                approval_involved=metrics.pending_count > 0,
+            ),
+        )
+    except Exception as exc:
+        return _error_response(
+            request_id=request_id,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="APPROVAL_DASHBOARD_SUMMARY_FAILED",
+            message="The backend could not load the approval dashboard summary.",
             details={"cause": type(exc).__name__},
         )
 

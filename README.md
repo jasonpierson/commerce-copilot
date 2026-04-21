@@ -178,11 +178,13 @@ Show me all pending approvals.
 Show me rejected approvals for INC-1091.
 Show me the approval dashboard.
 Who is holding the pending approvals for INC-1091?
+Which requester has the oldest pending approval?
 Which incident has the oldest pending approval?
 Which approver has the oldest pending item?
 Which approver is the bottleneck?
 Which requester is creating the most approval load?
 Which incidents have the most pending approval pressure?
+Show me only incidents with pending approvals older than 30 minutes.
 ```
 
 ## Operator Analytics
@@ -191,12 +193,18 @@ Use these prompts when you want a quick operational read on approval load withou
 
 ```text
 Show me the approval dashboard.
+Which requester has the oldest pending approval?
 Which incident has the oldest pending approval?
 Which approver has the oldest pending item?
 Which approver is the bottleneck?
 Which requester is creating the most approval load?
 Which incidents have the most pending approval pressure?
+Show me only incidents with pending approvals older than 30 minutes.
 ```
+
+Useful operator endpoints:
+- `GET /api/v1/approvals/dashboard`
+- `GET /api/v1/approvals/dashboard/summary`
 
 ## Dashboard Metrics
 
@@ -218,6 +226,13 @@ Supported dashboard filters:
 - `incident_code`
 - `requester`
 - `page_size_per_bucket`
+
+Dashboard summary endpoint:
+- `GET /api/v1/approvals/dashboard/summary`
+- optional filters:
+  - `incident_code`
+  - `requester`
+  - `min_pending_age_minutes`
 
 ## Local Setup
 
