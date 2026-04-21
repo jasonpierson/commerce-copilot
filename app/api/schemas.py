@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -233,6 +233,15 @@ class ApprovalPendingOwnerMetric(BaseModel):
     pending_count: int = 0
 
 
+class ApprovalOldestPendingItemMetric(BaseModel):
+    approval_id: str
+    approver_name: str
+    approver_role: SupportedUserRole | None = None
+    incident_code: str | None = None
+    requested_at: datetime
+    pending_age_minutes: int = 0
+
+
 class ApprovalRequesterLoadMetric(BaseModel):
     requester_name: str
     requester_role: SupportedUserRole | None = None
@@ -244,6 +253,12 @@ class ApprovalIncidentPressureMetric(BaseModel):
     pending_count: int = 0
 
 
+class ApprovalDailyTrendBucket(BaseModel):
+    bucket_date: date
+    approvals_created: int = 0
+    approvals_decided: int = 0
+
+
 class ApprovalDashboardMetrics(BaseModel):
     pending_count: int = 0
     approvals_created_last_24h: int = 0
@@ -251,10 +266,12 @@ class ApprovalDashboardMetrics(BaseModel):
     approvals_created_last_7d: int = 0
     approvals_decided_last_7d: int = 0
     oldest_pending_age_minutes: int | None = None
+    oldest_pending_item: ApprovalOldestPendingItemMetric | None = None
     pending_by_priority: dict[str, int] = Field(default_factory=dict)
     pending_by_owner: list[ApprovalPendingOwnerMetric] = Field(default_factory=list)
     pending_by_requester: list[ApprovalRequesterLoadMetric] = Field(default_factory=list)
     pending_by_incident: list[ApprovalIncidentPressureMetric] = Field(default_factory=list)
+    daily_trends_7d: list[ApprovalDailyTrendBucket] = Field(default_factory=list)
 
 
 class ApprovalDashboardData(BaseModel):

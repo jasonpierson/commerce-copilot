@@ -10,8 +10,10 @@ from app.api.db import connect, require_dsn
 from app.api.schemas import (
     ApprovalAuditEvent,
     ApprovalDashboardBucket,
+    ApprovalDailyTrendBucket,
     ApprovalIncidentPressureMetric,
     ApprovalDashboardMetrics,
+    ApprovalOldestPendingItemMetric,
     ApprovalPendingOwnerMetric,
     ApprovalRequesterLoadMetric,
     ApprovalRecord,
@@ -474,6 +476,55 @@ class ApprovalService:
                 or lower(requester.full_name) like lower(%(requester_like)s::text)
           )
         """
+        trend_sql = """
+        select
+            day.bucket_date,
+            (
+                select count(*)
+                from public.approvals a
+                left join public.users requester
+                  on requester.id = a.requested_by_user_id
+                where a.requested_at >= day.bucket_date
+                  and a.requested_at < day.bucket_date + interval '1 day'
+                  and (
+                        %(incident_code)s::text is null
+                        or (a.payload_json ->> 'incident_code') = %(incident_code)s::text
+                  )
+                  and (
+                        %(requester)s::text is null
+                        or requester.id::text = %(requester)s::text
+                        or lower(requester.email) = lower(%(requester)s::text)
+                        or lower(requester.full_name) like lower(%(requester_like)s::text)
+                  )
+            ) as approvals_created,
+            (
+                select count(*)
+                from public.approvals a
+                left join public.users requester
+                  on requester.id = a.requested_by_user_id
+                where a.decided_at is not null
+                  and a.decided_at >= day.bucket_date
+                  and a.decided_at < day.bucket_date + interval '1 day'
+                  and (
+                        %(incident_code)s::text is null
+                        or (a.payload_json ->> 'incident_code') = %(incident_code)s::text
+                  )
+                  and (
+                        %(requester)s::text is null
+                        or requester.id::text = %(requester)s::text
+                        or lower(requester.email) = lower(%(requester)s::text)
+                        or lower(requester.full_name) like lower(%(requester_like)s::text)
+                  )
+            ) as approvals_decided
+        from (
+            select generate_series(
+                date_trunc('day', (now() at time zone 'utc')) - interval '6 days',
+                date_trunc('day', (now() at time zone 'utc')),
+                interval '1 day'
+            ) as bucket_date
+        ) day
+        order by day.bucket_date
+        """
         pending_approvals, pending_count = self.list_approvals(
             status="pending",
             incident_code=incident_code,
@@ -494,12 +545,35 @@ class ApprovalService:
                     },
                 )
                 recent_row = cur.fetchone()
+                cur.execute(
+                    trend_sql,
+                    {
+                        "incident_code": incident_code,
+                        "requester": requester,
+                        "requester_like": f"%{requester}%" if requester else None,
+                    },
+                )
+                trend_rows = cur.fetchall()
 
         oldest_pending_age_minutes: int | None = None
+        oldest_pending_item: ApprovalOldestPendingItemMetric | None = None
         if pending_approvals:
-            oldest_requested_at = pending_approvals[0].requested_at
+            oldest_pending_approval = pending_approvals[0]
+            oldest_requested_at = oldest_pending_approval.requested_at
             oldest_pending_age_minutes = int(
                 max((datetime.now(UTC) - oldest_requested_at).total_seconds(), 0) // 60
+            )
+            oldest_pending_item = ApprovalOldestPendingItemMetric(
+                approval_id=oldest_pending_approval.approval_id,
+                approver_name=(
+                    oldest_pending_approval.approver.full_name
+                    if oldest_pending_approval.approver
+                    else "Unassigned approver"
+                ),
+                approver_role=oldest_pending_approval.approver.role if oldest_pending_approval.approver else None,
+                incident_code=oldest_pending_approval.payload.get("incident_code"),
+                requested_at=oldest_pending_approval.requested_at,
+                pending_age_minutes=oldest_pending_age_minutes,
             )
 
         priority_counts = Counter(
@@ -556,6 +630,14 @@ class ApprovalService:
                 key=lambda item: (-item[1], item[0]),
             )
         ]
+        trends = [
+            ApprovalDailyTrendBucket(
+                bucket_date=row["bucket_date"],
+                approvals_created=row["approvals_created"] or 0,
+                approvals_decided=row["approvals_decided"] or 0,
+            )
+            for row in trend_rows
+        ]
 
         return ApprovalDashboardMetrics(
             pending_count=pending_count,
@@ -564,10 +646,12 @@ class ApprovalService:
             approvals_created_last_7d=recent_row["approvals_created_last_7d"] or 0,
             approvals_decided_last_7d=recent_row["approvals_decided_last_7d"] or 0,
             oldest_pending_age_minutes=oldest_pending_age_minutes,
+            oldest_pending_item=oldest_pending_item,
             pending_by_priority=dict(sorted(priority_counts.items())),
             pending_by_owner=owners,
             pending_by_requester=requesters,
             pending_by_incident=incidents,
+            daily_trends_7d=trends,
         )
 
     def get_approval_dashboard(

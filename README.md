@@ -1,5 +1,7 @@
 # CommerceOpsCopilot
 
+For deployment hardening guidance, see [`SECURITY.md`](SECURITY.md).
+
 Governed Commerce Operations Copilot is a Python/FastAPI prototype for a support-facing copilot that blends:
 
 - retrieval over a curated operations corpus
@@ -176,6 +178,7 @@ Show me all pending approvals.
 Show me rejected approvals for INC-1091.
 Show me the approval dashboard.
 Who is holding the pending approvals for INC-1091?
+Which approver has the oldest pending item?
 Which approver is the bottleneck?
 Which requester is creating the most approval load?
 Which incidents have the most pending approval pressure?
@@ -194,13 +197,13 @@ Which incidents have the most pending approval pressure?
 - `approvals_decided_last_24h`
 - `approvals_created_last_7d`
 - `approvals_decided_last_7d`
+- `daily_trends_7d`
+- `oldest_pending_item`
 
 Supported dashboard filters:
 - `incident_code`
 - `requester`
 - `page_size_per_bucket`
-
-For deployment hardening guidance, see `SECURITY.md`.
 
 ## Local Setup
 

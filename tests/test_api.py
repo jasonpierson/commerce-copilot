@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -11,6 +11,12 @@ from app.api.main import app
 from app.api.query_service import QueryService
 from app.api.schemas import (
     ApprovalAuditEvent,
+    ApprovalDailyTrendBucket,
+    ApprovalDashboardMetrics,
+    ApprovalIncidentPressureMetric,
+    ApprovalOldestPendingItemMetric,
+    ApprovalPendingOwnerMetric,
+    ApprovalRequesterLoadMetric,
     ApprovalRecord,
     IncidentEvent,
     IncidentRecord,
@@ -373,6 +379,7 @@ class FakeApprovalService:
         owner_counts: dict[tuple[str, str | None], int] = {}
         requester_counts: dict[tuple[str, str | None], int] = {}
         incident_counts: dict[str, int] = {}
+        today = datetime.now(UTC).date()
         for approval in pending_approvals:
             priority = approval.payload.get("proposed_priority") or "unknown"
             priority_counts[priority] = priority_counts.get(priority, 0) + 1
@@ -388,6 +395,17 @@ class FakeApprovalService:
                 approval.approver.role if approval.approver else None,
             )
             owner_counts[owner_key] = owner_counts.get(owner_key, 0) + 1
+        oldest_pending_item = None
+        if pending_approvals:
+            oldest = pending_approvals[0]
+            oldest_pending_item = ApprovalOldestPendingItemMetric(
+                approval_id=oldest.approval_id,
+                approver_name=oldest.approver.full_name if oldest.approver else "Unassigned approver",
+                approver_role=oldest.approver.role if oldest.approver else None,
+                incident_code=oldest.payload.get("incident_code"),
+                requested_at=oldest.requested_at,
+                pending_age_minutes=30,
+            )
         metrics = ApprovalDashboardMetrics(
             pending_count=pending_count,
             approvals_created_last_24h=len(all_filtered_approvals),
@@ -399,6 +417,7 @@ class FakeApprovalService:
                 [record for record in all_filtered_approvals if record.decided_at is not None]
             ),
             oldest_pending_age_minutes=30 if pending_approvals else None,
+            oldest_pending_item=oldest_pending_item,
             pending_by_priority=priority_counts,
             pending_by_owner=[
                 ApprovalPendingOwnerMetric(
@@ -425,6 +444,14 @@ class FakeApprovalService:
                     incident_counts.items(),
                     key=lambda item: (-item[1], item[0]),
                 )
+            ],
+            daily_trends_7d=[
+                ApprovalDailyTrendBucket(
+                    bucket_date=today - timedelta(days=offset),
+                    approvals_created=1 if offset == 0 and all_filtered_approvals else 0,
+                    approvals_decided=0,
+                )
+                for offset in range(6, -1, -1)
             ],
         )
         return buckets, metrics
@@ -985,6 +1012,8 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["data"]["metrics"]["approvals_decided_last_24h"], 0)
         self.assertEqual(payload["data"]["metrics"]["approvals_created_last_7d"], 3)
         self.assertEqual(payload["data"]["metrics"]["approvals_decided_last_7d"], 0)
+        self.assertEqual(len(payload["data"]["metrics"]["daily_trends_7d"]), 7)
+        self.assertEqual(payload["data"]["metrics"]["oldest_pending_item"]["approver_name"], "Dana Lee")
         self.assertEqual(payload["data"]["metrics"]["pending_by_priority"], {"high": 1})
         self.assertEqual(payload["data"]["metrics"]["pending_by_owner"][0]["approver_name"], "Dana Lee")
         self.assertEqual(payload["data"]["metrics"]["pending_by_incident"][0]["incident_code"], "INC-1042")
@@ -1151,6 +1180,7 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_count"], 1)
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["approvals_created_last_24h"], 2)
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["approvals_created_last_7d"], 2)
+        self.assertEqual(len(payload["data"]["approval_dashboard_metrics"]["daily_trends_7d"]), 7)
         self.assertEqual(payload["meta"]["tools_used"], ["get_approval_dashboard"])
         self.assertTrue(payload["meta"]["approval_involved"])
 
@@ -1320,6 +1350,37 @@ class ApiWorkflowTests(TestCase):
         )
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_by_owner"][0]["approver_name"], "Dana Lee")
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_by_owner"][0]["pending_count"], 2)
+
+    def test_query_oldest_pending_item_lookup_returns_oldest_pending_approver(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=ACTIVE_INCIDENT.incident_id,
+            incident_code=ACTIVE_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact remains elevated.",
+            proposed_priority="critical",
+            draft_summary="Escalate to management due to payment failures.",
+            request_id="req_test_query_oldest_pending_item_1",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Which approver has the oldest pending item?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("The oldest pending approval item is currently with Dana Lee (ops_manager):", payload["data"]["answer"])
+        self.assertEqual(payload["data"]["approval_dashboard_metrics"]["oldest_pending_item"]["approver_name"], "Dana Lee")
 
     def test_incident_detail_endpoint_returns_incident_and_timeline(self) -> None:
         with patch(

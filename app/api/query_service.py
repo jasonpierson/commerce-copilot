@@ -45,6 +45,7 @@ class QueryService:
 
         if (
             self._is_pending_owner_lookup(request.message)
+            or self._is_oldest_pending_item_lookup(request.message)
             or self._is_approver_bottleneck_lookup(request.message)
             or self._is_requester_load_lookup(request.message)
             or self._is_escalation_load_lookup(request.message)
@@ -177,6 +178,21 @@ class QueryService:
                 "who's holding",
                 "who owns",
                 "who has",
+            )
+        )
+
+    def _is_oldest_pending_item_lookup(self, message: str) -> bool:
+        query = message.lower()
+        if "pending" not in query or "approv" not in query:
+            return False
+        return any(
+            token in query
+            for token in (
+                "oldest pending item",
+                "oldest pending approval",
+                "oldest pending approv",
+                "been waiting the longest",
+                "waiting longest",
             )
         )
 
@@ -655,6 +671,12 @@ class QueryService:
             )
             if metrics.oldest_pending_age_minutes is not None:
                 metrics_line += f"; oldest pending age: {metrics.oldest_pending_age_minutes} minute(s)"
+            if metrics.daily_trends_7d:
+                trend_summary = ", ".join(
+                    f"{bucket.bucket_date.isoformat()}: +{bucket.approvals_created}/-{bucket.approvals_decided}"
+                    for bucket in metrics.daily_trends_7d
+                )
+                metrics_line += f"; 7d daily trend: {trend_summary}"
             if metrics.pending_by_priority:
                 priority_summary = ", ".join(
                     f"{priority}={count}" for priority, count in metrics.pending_by_priority.items()
@@ -690,6 +712,31 @@ class QueryService:
             role = f" ({owner.approver_role})" if owner.approver_role else ""
             lines.append(f"- {owner.approver_name}{role}: {owner.pending_count}")
         return "\n".join(lines)
+
+    def _build_oldest_pending_item_answer(
+        self,
+        metrics: ApprovalDashboardMetrics,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+    ) -> str:
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        if not metrics.oldest_pending_item:
+            return f"I couldn't find an oldest pending approval item{scope} right now."
+
+        item = metrics.oldest_pending_item
+        role = f" ({item.approver_role})" if item.approver_role else ""
+        incident = f" for {item.incident_code}" if item.incident_code else ""
+        return (
+            f"The oldest pending approval item{scope} is currently with "
+            f"{item.approver_name}{role}: {item.approval_id}{incident}, pending for "
+            f"{item.pending_age_minutes} minute(s)."
+        )
 
     def _build_approver_bottleneck_answer(
         self,
@@ -1161,6 +1208,7 @@ class QueryService:
             approval_id = self._extract_approval_id(request.message)
             if (
                 self._is_pending_owner_lookup(request.message)
+                or self._is_oldest_pending_item_lookup(request.message)
                 or self._is_approver_bottleneck_lookup(request.message)
                 or self._is_requester_load_lookup(request.message)
                 or self._is_escalation_load_lookup(request.message)
@@ -1201,6 +1249,12 @@ class QueryService:
                         requester=requester_filter,
                     )
                     if self._is_pending_owner_lookup(request.message)
+                    else self._build_oldest_pending_item_answer(
+                        metrics,
+                        incident_code=incident_code_filter,
+                        requester=requester_filter,
+                    )
+                    if self._is_oldest_pending_item_lookup(request.message)
                     else self._build_approver_bottleneck_answer(
                         metrics,
                         incident_code=incident_code_filter,
