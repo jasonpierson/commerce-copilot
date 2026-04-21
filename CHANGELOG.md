@@ -9,6 +9,8 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - Dashboard filters for `incident_code` and `requester`
 - Dashboard metrics for:
   - pending approval count
+  - approvals created in the last 24 hours
+  - approvals decided in the last 24 hours
   - oldest pending approval age in minutes
   - pending approvals by priority
   - pending approvals by current approver
@@ -17,6 +19,9 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
   - `README.md`
   - `CHANGELOG.md`
 - Escalation-load answers in `/api/v1/query`, including questions like `Which incidents have the most pending approval pressure?`
+- Requester-load answers in `/api/v1/query`, including questions like `Who is holding the pending approvals?` and `Which requester is creating the most approval load?`
+- A lightweight operator runbook section in `README.md` for smoke tests and cleanup flows
+- Basic auth/rate-limit recommendations in `README.md` for future public deployment
 
 ### Changed
 - `/api/v1/query` dashboard responses now return grouped dashboard buckets plus structured dashboard metrics

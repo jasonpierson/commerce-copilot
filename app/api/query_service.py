@@ -43,7 +43,11 @@ class QueryService:
 
         query = request.message.lower()
 
-        if self._is_pending_owner_lookup(request.message) or self._is_escalation_load_lookup(request.message):
+        if (
+            self._is_pending_owner_lookup(request.message)
+            or self._is_requester_load_lookup(request.message)
+            or self._is_escalation_load_lookup(request.message)
+        ):
             return "structured_lookup"
 
         if self._is_approval_dashboard_lookup(request.message):
@@ -172,6 +176,19 @@ class QueryService:
                 "who's holding",
                 "who owns",
                 "who has",
+            )
+        )
+
+    def _is_requester_load_lookup(self, message: str) -> bool:
+        query = message.lower()
+        return "approval load" in query and any(
+            token in query
+            for token in (
+                "which requester",
+                "who is creating",
+                "who's creating",
+                "most approval load",
+                "most pending approval load",
             )
         )
 
@@ -613,6 +630,10 @@ class QueryService:
         lines = [f"Approval dashboard{scope}: {total} total work item(s)."]
         if metrics:
             metrics_line = f"Pending: {metrics.pending_count}"
+            metrics_line += (
+                f"; created in last 24h: {metrics.approvals_created_last_24h}"
+                f"; decided in last 24h: {metrics.approvals_decided_last_24h}"
+            )
             if metrics.oldest_pending_age_minutes is not None:
                 metrics_line += f"; oldest pending age: {metrics.oldest_pending_age_minutes} minute(s)"
             if metrics.pending_by_priority:
@@ -649,6 +670,35 @@ class QueryService:
         for owner in metrics.pending_by_owner:
             role = f" ({owner.approver_role})" if owner.approver_role else ""
             lines.append(f"- {owner.approver_name}{role}: {owner.pending_count}")
+        return "\n".join(lines)
+
+    def _build_requester_load_answer(
+        self,
+        metrics: ApprovalDashboardMetrics,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+    ) -> str:
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        if not metrics.pending_by_requester:
+            return f"I couldn't find any requester-driven approval load{scope} right now."
+
+        top_requester = metrics.pending_by_requester[0]
+        lines = [
+            f"Approval load is currently highest for requester {top_requester.requester_name} with {top_requester.pending_count} pending approval(s){scope}."
+        ]
+        if len(metrics.pending_by_requester) > 1:
+            lines.append("Current pending approval load by requester:")
+            for requester_metric in metrics.pending_by_requester:
+                role = f" ({requester_metric.requester_role})" if requester_metric.requester_role else ""
+                lines.append(
+                    f"- {requester_metric.requester_name}{role}: {requester_metric.pending_count}"
+                )
         return "\n".join(lines)
 
     def _build_escalation_load_answer(
@@ -1064,6 +1114,7 @@ class QueryService:
             approval_id = self._extract_approval_id(request.message)
             if (
                 self._is_pending_owner_lookup(request.message)
+                or self._is_requester_load_lookup(request.message)
                 or self._is_escalation_load_lookup(request.message)
                 or self._is_approval_dashboard_lookup(request.message)
             ):
@@ -1102,6 +1153,12 @@ class QueryService:
                         requester=requester_filter,
                     )
                     if self._is_pending_owner_lookup(request.message)
+                    else self._build_requester_load_answer(
+                        metrics,
+                        incident_code=incident_code_filter,
+                        requester=requester_filter,
+                    )
+                    if self._is_requester_load_lookup(request.message)
                     else self._build_escalation_load_answer(
                         metrics,
                         incident_code=incident_code_filter,

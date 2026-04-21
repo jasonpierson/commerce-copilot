@@ -333,6 +333,7 @@ class FakeApprovalService:
             ApprovalDashboardMetrics,
             ApprovalIncidentPressureMetric,
             ApprovalPendingOwnerMetric,
+            ApprovalRequesterLoadMetric,
         )
 
         buckets = []
@@ -360,14 +361,28 @@ class FakeApprovalService:
             sort_by="requested_at",
             sort_order="asc",
         )
+        all_filtered_approvals, _ = self.list_approvals(
+            incident_code=incident_code,
+            requester=requester,
+            page=1,
+            page_size=500,
+            sort_by="requested_at",
+            sort_order="desc",
+        )
         priority_counts: dict[str, int] = {}
         owner_counts: dict[tuple[str, str | None], int] = {}
+        requester_counts: dict[tuple[str, str | None], int] = {}
         incident_counts: dict[str, int] = {}
         for approval in pending_approvals:
             priority = approval.payload.get("proposed_priority") or "unknown"
             priority_counts[priority] = priority_counts.get(priority, 0) + 1
             incident_key = approval.payload.get("incident_code") or "unknown_incident"
             incident_counts[incident_key] = incident_counts.get(incident_key, 0) + 1
+            requester_key = (
+                approval.requester.full_name if approval.requester else "Unknown requester",
+                approval.requester.role if approval.requester else None,
+            )
+            requester_counts[requester_key] = requester_counts.get(requester_key, 0) + 1
             owner_key = (
                 approval.approver.full_name if approval.approver else "Unassigned approver",
                 approval.approver.role if approval.approver else None,
@@ -375,6 +390,10 @@ class FakeApprovalService:
             owner_counts[owner_key] = owner_counts.get(owner_key, 0) + 1
         metrics = ApprovalDashboardMetrics(
             pending_count=pending_count,
+            approvals_created_last_24h=len(all_filtered_approvals),
+            approvals_decided_last_24h=len(
+                [record for record in all_filtered_approvals if record.decided_at is not None]
+            ),
             oldest_pending_age_minutes=30 if pending_approvals else None,
             pending_by_priority=priority_counts,
             pending_by_owner=[
@@ -384,6 +403,14 @@ class FakeApprovalService:
                     pending_count=count,
                 )
                 for (name, role), count in owner_counts.items()
+            ],
+            pending_by_requester=[
+                ApprovalRequesterLoadMetric(
+                    requester_name=name,
+                    requester_role=role,
+                    pending_count=count,
+                )
+                for (name, role), count in requester_counts.items()
             ],
             pending_by_incident=[
                 ApprovalIncidentPressureMetric(
@@ -950,6 +977,8 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["data"]["total_count"], 3)
         self.assertEqual([bucket["status"] for bucket in payload["data"]["buckets"]], ["pending", "approved", "rejected"])
         self.assertEqual(payload["data"]["metrics"]["pending_count"], 1)
+        self.assertEqual(payload["data"]["metrics"]["approvals_created_last_24h"], 3)
+        self.assertEqual(payload["data"]["metrics"]["approvals_decided_last_24h"], 0)
         self.assertEqual(payload["data"]["metrics"]["pending_by_priority"], {"high": 1})
         self.assertEqual(payload["data"]["metrics"]["pending_by_owner"][0]["approver_name"], "Dana Lee")
         self.assertEqual(payload["data"]["metrics"]["pending_by_incident"][0]["incident_code"], "INC-1042")
@@ -987,6 +1016,7 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(payload["data"]["requester_filter"], "Morgan")
         self.assertEqual(payload["data"]["total_count"], 1)
         self.assertEqual(payload["data"]["metrics"]["pending_count"], 1)
+        self.assertEqual(payload["data"]["metrics"]["approvals_created_last_24h"], 1)
 
     def test_query_approval_list_returns_pending_items(self) -> None:
         fake_approval_service = FakeApprovalService()
@@ -1112,6 +1142,7 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(len(payload["data"]["approval_dashboard"]), 3)
         self.assertEqual(payload["data"]["links"][0]["href"], "/api/v1/approvals/dashboard")
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_count"], 1)
+        self.assertEqual(payload["data"]["approval_dashboard_metrics"]["approvals_created_last_24h"], 2)
         self.assertEqual(payload["meta"]["tools_used"], ["get_approval_dashboard"])
         self.assertTrue(payload["meta"]["approval_involved"])
 
@@ -1200,6 +1231,45 @@ class ApiWorkflowTests(TestCase):
         self.assertIn("Pending approval pressure is currently highest on INC-1091 with 2 pending approval(s).", payload["data"]["answer"])
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_by_incident"][0]["incident_code"], "INC-1091")
         self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_by_incident"][0]["pending_count"], 2)
+
+    def test_query_requester_load_lookup_returns_top_requester(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=ACTIVE_INCIDENT.incident_id,
+            incident_code=ACTIVE_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact remains elevated.",
+            proposed_priority="critical",
+            draft_summary="Escalate to management due to payment failures.",
+            request_id="req_test_query_requester_load_1",
+        )
+        fake_approval_service.records["apr_test_002"] = fake_approval_service.records["apr_test_001"].model_copy(
+            update={
+                "approval_id": "apr_test_002",
+                "payload": {"incident_code": "INC-2001", "proposed_priority": "high"},
+                "target_id": "inc_other",
+            }
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Which requester is creating the most approval load?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("Approval load is currently highest for requester Morgan Support with 2 pending approval(s).", payload["data"]["answer"])
+        self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_by_requester"][0]["requester_name"], "Morgan Support")
+        self.assertEqual(payload["data"]["approval_dashboard_metrics"]["pending_by_requester"][0]["pending_count"], 2)
 
     def test_incident_detail_endpoint_returns_incident_and_timeline(self) -> None:
         with patch(

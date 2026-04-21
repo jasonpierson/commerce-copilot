@@ -233,6 +233,12 @@ class ApprovalPendingOwnerMetric(BaseModel):
     pending_count: int = 0
 
 
+class ApprovalRequesterLoadMetric(BaseModel):
+    requester_name: str
+    requester_role: SupportedUserRole | None = None
+    pending_count: int = 0
+
+
 class ApprovalIncidentPressureMetric(BaseModel):
     incident_code: str
     pending_count: int = 0
@@ -240,9 +246,12 @@ class ApprovalIncidentPressureMetric(BaseModel):
 
 class ApprovalDashboardMetrics(BaseModel):
     pending_count: int = 0
+    approvals_created_last_24h: int = 0
+    approvals_decided_last_24h: int = 0
     oldest_pending_age_minutes: int | None = None
     pending_by_priority: dict[str, int] = Field(default_factory=dict)
     pending_by_owner: list[ApprovalPendingOwnerMetric] = Field(default_factory=list)
+    pending_by_requester: list[ApprovalRequesterLoadMetric] = Field(default_factory=list)
     pending_by_incident: list[ApprovalIncidentPressureMetric] = Field(default_factory=list)
 
 

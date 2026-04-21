@@ -13,6 +13,7 @@ from app.api.schemas import (
     ApprovalIncidentPressureMetric,
     ApprovalDashboardMetrics,
     ApprovalPendingOwnerMetric,
+    ApprovalRequesterLoadMetric,
     ApprovalRecord,
     ApprovalStatusValue,
     ApproverUserRole,
@@ -443,6 +444,29 @@ class ApprovalService:
         incident_code: str | None = None,
         requester: str | None = None,
     ) -> ApprovalDashboardMetrics:
+        recent_sql = """
+        select
+            count(*) filter (
+                where a.requested_at >= (now() at time zone 'utc') - interval '24 hours'
+            ) as approvals_created_last_24h,
+            count(*) filter (
+                where a.decided_at is not null
+                  and a.decided_at >= (now() at time zone 'utc') - interval '24 hours'
+            ) as approvals_decided_last_24h
+        from public.approvals a
+        left join public.users requester
+          on requester.id = a.requested_by_user_id
+        where (
+                %(incident_code)s::text is null
+                or (a.payload_json ->> 'incident_code') = %(incident_code)s::text
+        )
+          and (
+                %(requester)s::text is null
+                or requester.id::text = %(requester)s::text
+                or lower(requester.email) = lower(%(requester)s::text)
+                or lower(requester.full_name) like lower(%(requester_like)s::text)
+          )
+        """
         pending_approvals, pending_count = self.list_approvals(
             status="pending",
             incident_code=incident_code,
@@ -452,6 +476,17 @@ class ApprovalService:
             sort_by="requested_at",
             sort_order="asc",
         )
+        with connect(self.dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    recent_sql,
+                    {
+                        "incident_code": incident_code,
+                        "requester": requester,
+                        "requester_like": f"%{requester}%" if requester else None,
+                    },
+                )
+                recent_row = cur.fetchone()
 
         oldest_pending_age_minutes: int | None = None
         if pending_approvals:
@@ -471,6 +506,13 @@ class ApprovalService:
             )
             for approval in pending_approvals
         )
+        requester_counts: Counter[tuple[str, str | None]] = Counter(
+            (
+                approval.requester.full_name if approval.requester else "Unknown requester",
+                approval.requester.role if approval.requester else None,
+            )
+            for approval in pending_approvals
+        )
         incident_counts = Counter(
             approval.payload.get("incident_code") or "unknown_incident"
             for approval in pending_approvals
@@ -483,6 +525,17 @@ class ApprovalService:
             )
             for (name, role), count in sorted(
                 owner_counts.items(),
+                key=lambda item: (-item[1], item[0][0]),
+            )
+        ]
+        requesters = [
+            ApprovalRequesterLoadMetric(
+                requester_name=name,
+                requester_role=role,
+                pending_count=count,
+            )
+            for (name, role), count in sorted(
+                requester_counts.items(),
                 key=lambda item: (-item[1], item[0][0]),
             )
         ]
@@ -499,9 +552,12 @@ class ApprovalService:
 
         return ApprovalDashboardMetrics(
             pending_count=pending_count,
+            approvals_created_last_24h=recent_row["approvals_created_last_24h"] or 0,
+            approvals_decided_last_24h=recent_row["approvals_decided_last_24h"] or 0,
             oldest_pending_age_minutes=oldest_pending_age_minutes,
             pending_by_priority=dict(sorted(priority_counts.items())),
             pending_by_owner=owners,
+            pending_by_requester=requesters,
             pending_by_incident=incidents,
         )
 

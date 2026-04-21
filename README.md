@@ -23,6 +23,7 @@ The project started as an ingestion/retrieval scaffold and has grown into a work
   - approval status/history/rejection reason questions
   - approval browsing and dashboard questions
   - pending-approval owner questions
+- requester-load questions
 - escalation-load / approval-pressure questions
 - Demo seeding and cleanup scripts for local/live development
 - API test coverage for the main approval, inventory, and incident flows
@@ -175,6 +176,7 @@ Show me all pending approvals.
 Show me rejected approvals for INC-1091.
 Show me the approval dashboard.
 Who is holding the pending approvals for INC-1091?
+Which requester is creating the most approval load?
 Which incidents have the most pending approval pressure?
 ```
 
@@ -187,6 +189,8 @@ Which incidents have the most pending approval pressure?
 - `pending_by_priority`
 - `pending_by_owner`
 - `pending_by_incident`
+- `approvals_created_last_24h`
+- `approvals_decided_last_24h`
 
 Supported dashboard filters:
 - `incident_code`
@@ -278,6 +282,101 @@ source .env.local
 set +a
 python -m scripts.cleanup_demo_data --scope full --apply
 ```
+
+## Future Public Deployment Security Notes
+
+If you later deploy this API publicly, add a minimum security envelope before exposing it on the internet.
+
+### Recommended baseline
+- require authentication on all non-health endpoints
+- put the API behind a reverse proxy or gateway with request throttling
+- apply per-user or per-token rate limits on `/api/v1/query` and approval endpoints
+- disable broad anonymous access to operational and approval data
+- add structured request logging and alerting for bursts, abuse, and repeated failures
+- rotate secrets and keep all runtime secrets out of the repo
+
+### Practical first controls
+- auth: API keys, OAuth, or signed internal service tokens
+- rate limiting: per-IP and per-principal limits, especially for `/api/v1/query`
+- network controls: allowlist internal callers where possible
+- CORS: restrict origins if a browser-based client is introduced
+- DB security: use least-privilege DB credentials and row-level protections where appropriate
+
+### Current development posture
+- this repo does not expose your `.env.local` when gitignore is respected
+- a local-only FastAPI process is not reachable just because the repo is public
+- the bigger risk begins when the API is deployed to a public hostname without auth or limits
+
+## Operator Runbook
+
+Use this section for common local and live-safe operator workflows while developing.
+
+### 1. Start the API locally
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python scripts/run_api.py
+```
+
+### 2. Seed the demo operational data
+Use this when inventory, incidents, locations, or demo users are missing.
+
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python scripts/seed_domain_data.py
+```
+
+### 3. Smoke-test core query flows
+Good quick checks:
+
+```text
+Check inventory for the Phantom X shoes.
+Summarize incident INC-1091 and tell me the likely customer impact.
+Show me the approval dashboard.
+Who is holding the pending approvals for INC-1091?
+Which requester is creating the most approval load?
+Which incidents have the most pending approval pressure?
+```
+
+### 4. Run the local test suite
+```bash
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+### 5. Cleanup only approval smoke-test artifacts
+Use this after disposable approval workflow tests so demo catalog/incident data remains intact.
+
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python -m scripts.cleanup_demo_data --scope approvals --apply
+```
+
+### 6. Cleanup the full demo dataset
+Use this only when you want to reset seeded operational data entirely.
+
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python -m scripts.cleanup_demo_data --scope full --apply
+```
+
+### 7. Safe public-repo hygiene checklist
+Before pushing:
+- confirm `.env.local` is still ignored
+- confirm no secrets were added to committed files
+- prefer disposable demo approvals for smoke tests
+- run approval-only cleanup after live approval smoke tests
 
 ## Testing
 
