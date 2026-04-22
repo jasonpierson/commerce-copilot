@@ -134,6 +134,15 @@ Primary files:
 - `app/api/query_router.py`
 - `app/api/query_service.py`
 
+Shared response shape:
+- `request_id`
+- `status`
+- `route_type`
+- `data.answer`
+- `data.citations` for retrieval-backed answers
+- `meta.tools_used`
+- `meta.approval_involved`
+
 ## API Surface
 
 ### Health
@@ -156,18 +165,114 @@ Primary files:
 ## Example Query Behaviors
 
 ### Policy / Process
-```text
-What is the escalation policy for severe checkout incidents?
+```bash
+curl -s http://127.0.0.1:8000/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message": "What is the return process for damaged products?",
+    "user_role": "support_analyst"
+  }'
+```
+
+```json
+{
+  "route_type": "policy_qa",
+  "data": {
+    "answer": "...policy answer...",
+    "citations": [
+      {
+        "doc_key": "policy_returns_001",
+        "title": "Returns Policy"
+      }
+    ]
+  }
+}
 ```
 
 ### Inventory Lookup
-```text
-Check inventory for the Phantom X shoes.
+```bash
+curl -s http://127.0.0.1:8000/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message": "Check inventory for the Phantom X shoes.",
+    "user_role": "support_analyst"
+  }'
+```
+
+```json
+{
+  "route_type": "structured_lookup",
+  "data": {
+    "answer": "...inventory answer...",
+    "product": {
+      "product_name": "Phantom X Shoes"
+    },
+    "inventory_results": [
+      {
+        "location_code": "CHI-01",
+        "quantity_available": 12
+      }
+    ]
+  }
+}
 ```
 
 ### Incident Summary
-```text
-Summarize incident INC-1091 and tell me the likely customer impact.
+```bash
+curl -s http://127.0.0.1:8000/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message": "Summarize incident INC-1091 and tell me the likely customer impact.",
+    "user_role": "engineering_support"
+  }'
+```
+
+```json
+{
+  "route_type": "incident_summary",
+  "data": {
+    "answer": "...incident summary...",
+    "incident": {
+      "incident_code": "INC-1091"
+    },
+    "citations": [
+      {
+        "doc_key": "incident_playbook_mobile_checkout_001",
+        "title": "Mobile Checkout Incident Playbook"
+      }
+    ]
+  }
+}
+```
+
+### Escalation Guidance
+```bash
+curl -s http://127.0.0.1:8000/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message": "Should INC-1091 be escalated right now?",
+    "user_role": "ops_manager"
+  }'
+```
+
+```json
+{
+  "route_type": "escalation_guidance",
+  "data": {
+    "answer": "...escalation guidance...",
+    "approval_suggestion": {
+      "action_type": "incident_escalation",
+      "incident_code": "INC-1091",
+      "proposed_priority": "critical"
+    },
+    "citations": [
+      {
+        "doc_key": "matrix_priority_escalation_001",
+        "title": "Priority Escalation Matrix"
+      }
+    ]
+  }
+}
 ```
 
 ### Approval History
@@ -363,6 +468,77 @@ source .env.local
 set +a
 python -m scripts.cleanup_demo_data --scope full --apply
 ```
+
+### Run the Golden-Path Demo
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python scripts/demo_queries.py
+```
+
+This scripted demo covers:
+- policy question
+- inventory lookup
+- incident summary
+- escalation request
+- approval status
+- approval decision
+- approval audit/history
+
+### Approval Workflow Demo
+```bash
+# 1. create an escalation approval request
+curl -s http://127.0.0.1:8000/api/v1/escalations \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "incident_code": "INC-1091",
+    "requested_by_user_id": "demo-support-001",
+    "requested_by_role": "support_analyst",
+    "escalation_reason": "Customer impact remains elevated.",
+    "proposed_priority": "critical",
+    "draft_summary": "Escalate to management due to ongoing checkout failures."
+  }'
+
+# 2. check approval status
+curl -s http://127.0.0.1:8000/api/v1/approvals/<approval_id>
+
+# 3. approve or reject the request
+curl -s http://127.0.0.1:8000/api/v1/approvals/<approval_id>/decision \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "decision": "approved",
+    "decision_notes": "Approved for incident coordination.",
+    "decider_user_id": "demo-ops-manager-001",
+    "decider_role": "ops_manager"
+  }'
+
+# 4. inspect audit history
+curl -s http://127.0.0.1:8000/api/v1/approvals/<approval_id>/audit
+```
+
+Expected sequence:
+- create request
+- check status
+- decide approval
+- inspect audit/history
+
+### Retrieval Event Logs
+
+Retrieval events are persisted to:
+- `artifacts/retrieval_events.jsonl`
+
+Each log record includes at least:
+- `event_type`
+- `request_id`
+- `route_type`
+- `doc_keys`
+- `result_count`
+
+Typical ways to create the log:
+- `python3 scripts/run_retrieval_eval.py --mode adapter`
+- `POST /api/v1/query` for retrieval-backed routes
 
 ## Future Public Deployment Security Notes
 
