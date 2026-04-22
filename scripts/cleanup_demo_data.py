@@ -37,7 +37,7 @@ def approval_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.audit_events
+                    from app_private.audit_events
                     where event_type = any(%(event_types)s)
                       and (
                             user_id::text = any(%(user_ids)s)
@@ -56,7 +56,7 @@ def approval_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.approvals
+                    from app_private.approvals
                     where target_id = any(%(incident_ids)s)
                        or requested_by_user_id::text = any(%(user_ids)s)
                        or approver_user_id::text = any(%(user_ids)s)
@@ -80,7 +80,7 @@ def seed_data_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.audit_events
+                    from app_private.audit_events
                     where user_id::text = any(%(user_ids)s)
                        or target_id = any(%(seed_target_ids)s)
                 """,
@@ -92,7 +92,7 @@ def seed_data_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.approvals
+                    from app_private.approvals
                     where target_id = any(%(incident_ids)s)
                        or requested_by_user_id::text = any(%(user_ids)s)
                        or approver_user_id::text = any(%(user_ids)s)
@@ -105,7 +105,7 @@ def seed_data_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.incident_events
+                    from app_private.incident_events
                     where incident_id::text = any(%(incident_ids)s)
                 """,
                 "params": {"incident_ids": incident_ids},
@@ -116,7 +116,7 @@ def seed_data_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.incidents
+                    from app_private.incidents
                     where id::text = any(%(incident_ids)s)
                 """,
                 "params": {"incident_ids": incident_ids},
@@ -127,7 +127,7 @@ def seed_data_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.inventory
+                    from app_private.inventory
                     where product_id::text = any(%(product_ids)s)
                        or location_id::text = any(%(location_ids)s)
                 """,
@@ -139,7 +139,7 @@ def seed_data_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.products
+                    from app_private.products
                     where id::text = any(%(product_ids)s)
                 """,
                 "params": {"product_ids": product_ids},
@@ -150,7 +150,7 @@ def seed_data_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.locations
+                    from app_private.locations
                     where id::text = any(%(location_ids)s)
                 """,
                 "params": {"location_ids": location_ids},
@@ -161,7 +161,7 @@ def seed_data_count_specs() -> list[tuple[str, dict[str, Any]]]:
             {
                 "sql": """
                     select count(*)
-                    from public.users
+                    from app_private.users
                     where id::text = any(%(user_ids)s)
                 """,
                 "params": {"user_ids": user_ids},
@@ -185,7 +185,7 @@ def approval_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "approval_audit_events",
             {
                 "sql": """
-                    delete from public.audit_events
+                    delete from app_private.audit_events
                     where event_type = any(%(event_types)s)
                       and (
                             user_id::text = any(%(user_ids)s)
@@ -203,7 +203,7 @@ def approval_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "approvals",
             {
                 "sql": """
-                    delete from public.approvals
+                    delete from app_private.approvals
                     where target_id = any(%(incident_ids)s)
                        or requested_by_user_id::text = any(%(user_ids)s)
                        or approver_user_id::text = any(%(user_ids)s)
@@ -226,7 +226,7 @@ def seed_data_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "audit_events",
             {
                 "sql": """
-                    delete from public.audit_events
+                    delete from app_private.audit_events
                     where user_id::text = any(%(user_ids)s)
                        or target_id = any(%(seed_target_ids)s)
                 """,
@@ -237,7 +237,7 @@ def seed_data_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "approvals",
             {
                 "sql": """
-                    delete from public.approvals
+                    delete from app_private.approvals
                     where target_id = any(%(incident_ids)s)
                        or requested_by_user_id::text = any(%(user_ids)s)
                        or approver_user_id::text = any(%(user_ids)s)
@@ -249,7 +249,7 @@ def seed_data_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "incident_events",
             {
                 "sql": """
-                    delete from public.incident_events
+                    delete from app_private.incident_events
                     where incident_id::text = any(%(incident_ids)s)
                 """,
                 "params": {"incident_ids": incident_ids},
@@ -259,7 +259,7 @@ def seed_data_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "incidents",
             {
                 "sql": """
-                    delete from public.incidents
+                    delete from app_private.incidents
                     where id::text = any(%(incident_ids)s)
                 """,
                 "params": {"incident_ids": incident_ids},
@@ -269,7 +269,7 @@ def seed_data_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "inventory",
             {
                 "sql": """
-                    delete from public.inventory
+                    delete from app_private.inventory
                     where product_id::text = any(%(product_ids)s)
                        or location_id::text = any(%(location_ids)s)
                 """,
@@ -280,7 +280,7 @@ def seed_data_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "products",
             {
                 "sql": """
-                    delete from public.products
+                    delete from app_private.products
                     where id::text = any(%(product_ids)s)
                 """,
                 "params": {"product_ids": product_ids},
@@ -290,7 +290,7 @@ def seed_data_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "locations",
             {
                 "sql": """
-                    delete from public.locations
+                    delete from app_private.locations
                     where id::text = any(%(location_ids)s)
                 """,
                 "params": {"location_ids": location_ids},
@@ -300,7 +300,7 @@ def seed_data_delete_specs() -> list[tuple[str, dict[str, Any]]]:
             "users",
             {
                 "sql": """
-                    delete from public.users
+                    delete from app_private.users
                     where id::text = any(%(user_ids)s)
                 """,
                 "params": {"user_ids": user_ids},

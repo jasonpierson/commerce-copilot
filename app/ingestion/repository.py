@@ -33,9 +33,9 @@ class Repository:
             logger.info("Dry run: would upsert document %s", doc.doc_key)
             return None
 
-        query_select = "select id from public.documents where doc_key = %s"
+        query_select = "select id from app_private.documents where doc_key = %s"
         query_update = """
-            update public.documents
+            update app_private.documents
             set title = %s,
                 doc_type = %s,
                 source_name = %s,
@@ -46,7 +46,7 @@ class Repository:
             where id = %s
         """
         query_insert = """
-            insert into public.documents (
+            insert into app_private.documents (
                 doc_key, title, doc_type, source_name, source_path, status, audience
             )
             values (%s, %s, %s, %s, %s, %s, %s)
@@ -95,7 +95,7 @@ class Repository:
             return
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from public.document_chunks where document_id = %s", (document_id,))
+                cur.execute("delete from app_private.document_chunks where document_id = %s", (document_id,))
                 conn.commit()
 
     def insert_chunk_records(self, document_id: str | None, chunks: list[Chunk], embedding_model: str) -> None:
@@ -104,7 +104,7 @@ class Repository:
             return
 
         query = """
-            insert into public.document_chunks (
+            insert into app_private.document_chunks (
                 document_id,
                 chunk_index,
                 chunk_text,

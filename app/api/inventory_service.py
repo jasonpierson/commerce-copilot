@@ -30,7 +30,7 @@ class InventoryService:
             category,
             brand,
             status
-        from public.products
+        from app_private.products
         where is_active = true
           and (
             product_name ilike %(contains_query)s
@@ -70,8 +70,8 @@ class InventoryService:
             l.region,
             i.quantity_available,
             i.inventory_status
-        from public.inventory i
-        join public.locations l
+        from app_private.inventory i
+        join app_private.locations l
           on l.id = i.location_id
         where i.product_id::text = %(product_id)s
         order by i.quantity_available desc, l.location_name asc

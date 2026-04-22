@@ -451,6 +451,12 @@ Operator dashboard endpoint for future UI work:
 - Postgres/Supabase database with the expected schema
 - OpenAI API key for real embeddings/query embedding
 
+Database model:
+- application tables now live in `app_private`
+- the FastAPI backend owns database access for those tables
+- browser/client code does not talk directly to the Supabase Data API for app tables
+- RLS is intentionally not added yet because the exposure path is backend-only
+
 ### Install
 ```bash
 python3 -m venv .venv
@@ -470,6 +476,7 @@ SUPABASE_DB_URL=...
 EMBEDDING_PROVIDER=openai
 EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_DIMENSIONS=1536
+DB_APP_SCHEMA=app_private
 ```
 
 Notes:
@@ -477,6 +484,7 @@ Notes:
 - default embedding model is `text-embedding-3-small`
 - default embedding dimension is `1536`
 - `EMBEDDING_PROVIDER` must stay `openai` for ingestion and live retrieval
+- `DB_APP_SCHEMA` defaults to `app_private`
 
 Retrieval tuning is env-driven as well; the retrieval config reads several runtime knobs from environment variables.
 
@@ -509,6 +517,21 @@ set -a
 source .env.local
 set +a
 python scripts/run_retrieval_eval.py --mode adapter
+```
+
+### Check Backend DB Schema Access
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python scripts/check_db_schema.py
+```
+
+Or with `make`:
+
+```bash
+make check-db-schema
 ```
 
 ## Retrieval Quality

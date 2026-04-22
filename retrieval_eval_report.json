@@ -3,11 +3,11 @@
     "total_cases": 18,
     "retrieval_cases": 15,
     "tool_only_cases": 3,
-    "top_1_hit_rate": 1.0,
-    "top_3_hit_rate": 1.0,
-    "section_match_top_3_rate": 0.8667,
+    "top_1_hit_rate": 0.9333,
+    "top_3_hit_rate": 0.9333,
+    "section_match_top_3_rate": 0.8,
     "retrieval_boundary_correct_rate": 1.0,
-    "unexpected_noise_top_3_rate": 0.0
+    "unexpected_noise_top_3_rate": 0.0667
   },
   "case_scores": [
     {
@@ -243,17 +243,16 @@
       "route_type": "escalation_guidance",
       "query": "What qualifies as high priority escalation?",
       "should_use_retrieval": true,
-      "result_count": 4,
-      "top_result_doc_key": "matrix_priority_escalation_001",
+      "result_count": 2,
+      "top_result_doc_key": "escalation_procedure_incident_escalation_001",
       "top_3_doc_keys": [
-        "matrix_priority_escalation_001",
-        "matrix_priority_escalation_001",
+        "escalation_procedure_incident_escalation_001",
         "escalation_procedure_incident_escalation_001"
       ],
-      "top_1_hit": true,
-      "top_3_hit": true,
-      "section_match_top_3": true,
-      "unexpected_noise_top_3": false,
+      "top_1_hit": false,
+      "top_3_hit": false,
+      "section_match_top_3": false,
+      "unexpected_noise_top_3": true,
       "used_retrieval_correctly": true,
       "notes": "Should be a very clean match."
     },
@@ -262,12 +261,11 @@
       "route_type": "escalation_guidance",
       "query": "Who is allowed to approve escalation requests?",
       "should_use_retrieval": true,
-      "result_count": 4,
+      "result_count": 2,
       "top_result_doc_key": "escalation_procedure_incident_escalation_001",
       "top_3_doc_keys": [
         "escalation_procedure_incident_escalation_001",
-        "escalation_procedure_incident_escalation_001",
-        "matrix_priority_escalation_001"
+        "escalation_procedure_incident_escalation_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,

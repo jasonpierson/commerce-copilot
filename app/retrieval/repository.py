@@ -41,8 +41,8 @@ class PostgresRetrievalRepository:
             dc.chunk_index,
             dc.chunk_text,
             1 - (dc.embedding <=> %s::vector) as similarity_score
-        from public.document_chunks dc
-        join public.documents d
+        from app_private.document_chunks dc
+        join app_private.documents d
           on d.id = dc.document_id
         where d.status = %s
           and d.doc_type = any(%s)

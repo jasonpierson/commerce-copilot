@@ -54,6 +54,13 @@ User / Support Agent
   - `ops_manager`
   - `admin`
 
+## Data Boundary
+
+- application tables live in `app_private`
+- SQL uses explicit schema qualification for app tables
+- the browser/client is not expected to query those tables directly
+- backend services are the only intended access path in the current design
+
 ## Why This Matters
 
 - retrieval shows grounded policy/runbook support

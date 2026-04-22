@@ -78,7 +78,7 @@ class ApprovalService:
             full_name,
             role,
             email
-        from public.users
+        from app_private.users
         where role = %(role)s
           and is_active = true
         order by created_at asc
@@ -103,7 +103,7 @@ class ApprovalService:
                 full_name,
                 role,
                 email
-            from public.users
+            from app_private.users
             where id::text = %(user_id)s
                or lower(email) = lower(%(user_id)s)
             limit 1
@@ -147,7 +147,7 @@ class ApprovalService:
         payload: dict,
     ) -> None:
         sql = """
-        insert into public.audit_events (
+        insert into app_private.audit_events (
             id,
             event_type,
             user_id,
@@ -284,10 +284,10 @@ class ApprovalService:
             approver.full_name as approver_full_name,
             approver.role as approver_role,
             approver.email as approver_email
-        from public.approvals a
-        left join public.users requester
+        from app_private.approvals a
+        left join app_private.users requester
           on requester.id = a.requested_by_user_id
-        left join public.users approver
+        left join app_private.users approver
           on approver.id = a.approver_user_id
         where a.id::text = %(approval_id)s
         limit 1
@@ -324,8 +324,8 @@ class ApprovalService:
             actor.full_name as actor_full_name,
             actor.role as actor_role,
             actor.email as actor_email
-        from public.audit_events ae
-        left join public.users actor
+        from app_private.audit_events ae
+        left join app_private.users actor
           on actor.id = ae.user_id
         where (
                 ae.event_payload_json ->> 'approval_id' = %(approval_id)s
@@ -373,10 +373,10 @@ class ApprovalService:
             approver.full_name as approver_full_name,
             approver.role as approver_role,
             approver.email as approver_email
-        from public.approvals a
-        left join public.users requester
+        from app_private.approvals a
+        left join app_private.users requester
           on requester.id = a.requested_by_user_id
-        left join public.users approver
+        left join app_private.users approver
           on approver.id = a.approver_user_id
         where a.target_type = 'incident'
           and a.target_id = %(incident_id)s
@@ -425,10 +425,10 @@ class ApprovalService:
           )
         """
         base_select = f"""
-        from public.approvals a
-        left join public.users requester
+        from app_private.approvals a
+        left join app_private.users requester
           on requester.id = a.requested_by_user_id
-        left join public.users approver
+        left join app_private.users approver
           on approver.id = a.approver_user_id
         {where_sql}
         """
@@ -499,8 +499,8 @@ class ApprovalService:
                 where a.decided_at is not null
                   and a.decided_at >= (now() at time zone 'utc') - interval '7 days'
             ) as approvals_decided_last_7d
-        from public.approvals a
-        left join public.users requester
+        from app_private.approvals a
+        left join app_private.users requester
           on requester.id = a.requested_by_user_id
         where (
                 %(incident_code)s::text is null
@@ -518,8 +518,8 @@ class ApprovalService:
             day.bucket_date,
             (
                 select count(*)
-                from public.approvals a
-                left join public.users requester
+                from app_private.approvals a
+                left join app_private.users requester
                   on requester.id = a.requested_by_user_id
                 where a.requested_at >= day.bucket_date
                   and a.requested_at < day.bucket_date + interval '1 day'
@@ -536,8 +536,8 @@ class ApprovalService:
             ) as approvals_created,
             (
                 select count(*)
-                from public.approvals a
-                left join public.users requester
+                from app_private.approvals a
+                left join app_private.users requester
                   on requester.id = a.requested_by_user_id
                 where a.decided_at is not null
                   and a.decided_at >= day.bucket_date
@@ -856,7 +856,7 @@ class ApprovalService:
         approver = self._resolve_approver(("ops_manager", "admin"))
 
         sql = """
-        insert into public.approvals (
+        insert into app_private.approvals (
             id,
             request_type,
             target_type,
@@ -944,7 +944,7 @@ class ApprovalService:
             )
 
         sql = """
-        update public.approvals
+        update app_private.approvals
         set
             approver_user_id = %(approver_user_id)s::uuid,
             status = %(status)s,

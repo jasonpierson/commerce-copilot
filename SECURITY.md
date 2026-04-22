@@ -7,6 +7,10 @@ This project is currently optimized for local development and controlled smoke t
 - Secrets are expected to live in `.env.local`, which should stay out of git.
 - The local FastAPI server is only reachable if you run it on a machine and expose a port.
 - Demo seed data is synthetic, but approval smoke tests can create live rows in the connected database.
+- Application tables live in the private `app_private` schema rather than `public`.
+- The FastAPI backend owns DB access for those tables; browser/client code does not query them directly.
+- Supabase Data API access for app tables is intentionally not part of the architecture.
+- RLS is intentionally not applied yet because direct client exposure to those tables has been removed.
 
 ## Deployment-Hardening Checklist
 
@@ -58,6 +62,7 @@ Use this list before exposing the API behind a public hostname.
 
 ### 8. Database Safety
 - Use least-privilege DB credentials.
+- Keep application tables in a private schema such as `app_private`.
 - Keep approval/demo cleanup scripts restricted to trusted operators.
 - Review row-level protections if this moves to multi-tenant or mixed-sensitivity data.
 - Back up approval and audit tables before destructive maintenance workflows.

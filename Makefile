@@ -1,7 +1,7 @@
 PYTHON ?= python3
 VENV_PYTHON = .venv/bin/python
 
-.PHONY: install run-api seed test demo eval smoke clean-approvals clean-full
+.PHONY: install run-api seed test demo eval smoke check-db-schema clean-approvals clean-full
 
 install:
 	$(PYTHON) -m venv .venv
@@ -25,6 +25,9 @@ eval:
 
 smoke:
 	. .venv/bin/activate && python scripts/run_retrieval_smoke_test.py
+
+check-db-schema:
+	. .venv/bin/activate && set -a && . .env.local && set +a && python scripts/check_db_schema.py
 
 clean-approvals:
 	. .venv/bin/activate && set -a && . .env.local && set +a && python -m scripts.cleanup_demo_data --scope approvals --apply

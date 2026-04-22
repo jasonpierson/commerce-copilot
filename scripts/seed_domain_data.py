@@ -193,7 +193,7 @@ INCIDENT_EVENTS = [
 
 def upsert_users(conn) -> None:
     sql = """
-    insert into public.users (
+    insert into app_private.users (
         id,
         email,
         full_name,
@@ -218,7 +218,7 @@ def upsert_users(conn) -> None:
 
 def upsert_products(conn) -> None:
     sql = """
-    insert into public.products (
+    insert into app_private.products (
         id,
         sku,
         product_name,
@@ -253,7 +253,7 @@ def upsert_products(conn) -> None:
 
 def upsert_locations(conn) -> None:
     sql = """
-    insert into public.locations (
+    insert into app_private.locations (
         id,
         location_code,
         location_name,
@@ -281,7 +281,7 @@ def upsert_locations(conn) -> None:
 
 def upsert_inventory(conn) -> None:
     sql = """
-    insert into public.inventory (
+    insert into app_private.inventory (
         id,
         product_id,
         location_id,
@@ -323,7 +323,7 @@ def upsert_inventory(conn) -> None:
 
 def upsert_incidents(conn) -> None:
     sql = """
-    insert into public.incidents (
+    insert into app_private.incidents (
         id,
         incident_code,
         title,
@@ -364,7 +364,7 @@ def upsert_incidents(conn) -> None:
 
 def upsert_incident_events(conn) -> None:
     sql = """
-    insert into public.incident_events (
+    insert into app_private.incident_events (
         id,
         incident_id,
         event_time,

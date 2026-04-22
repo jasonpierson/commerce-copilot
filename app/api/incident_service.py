@@ -27,7 +27,7 @@ class IncidentService:
             customer_impact,
             start_time,
             resolved_time
-        from public.incidents
+        from app_private.incidents
         where upper(incident_code) = upper(%(incident_code)s)
         limit 1
         """
@@ -48,7 +48,7 @@ class IncidentService:
             event_type,
             actor,
             event_summary
-        from public.incident_events
+        from app_private.incident_events
         where incident_id::text = %(incident_id)s
         order by event_time asc
         """

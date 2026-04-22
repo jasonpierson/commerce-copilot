@@ -12,12 +12,15 @@
 - local `.env.local` with:
   - `OPENAI_API_KEY`
   - `SUPABASE_DB_URL`
+- backend-visible application schema:
+  - `DB_APP_SCHEMA=app_private` by default
 - seeded operational data for the structured demo paths
 
 ## Fastest Local Flow
 
 ```bash
 make install
+make check-db-schema
 make seed
 make run-api
 ```
@@ -39,5 +42,6 @@ make demo
 ## Notes
 
 - retrieval and structured lookups both depend on the external Postgres/Supabase database
+- application tables are expected to live in `app_private`, not `public`
 - this repo currently provides a developer-ops starter path, not a production deployment package
 - for public exposure hardening, use `SECURITY.md`

@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 import os
 
 
+DB_APP_SCHEMA = os.getenv("DB_APP_SCHEMA", "app_private")
+
+
 def _env_str(name: str, default: str) -> str:
     return os.getenv(name, default)
 
