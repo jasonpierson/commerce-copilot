@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import json
 from collections import Counter
 from uuid import uuid4
 
+from app.api.audit import ApiAuditSink
 from app.api.db import connect, require_dsn
 from app.api.schemas import (
     ApprovalAgedIncidentMetric,
@@ -45,6 +46,7 @@ class ApprovalValidationError(Exception):
 @dataclass(slots=True)
 class ApprovalService:
     dsn: str
+    audit_sink: ApiAuditSink = field(default_factory=lambda: ApiAuditSink(filename="approval_events.jsonl"))
 
     @classmethod
     def from_env(cls) -> "ApprovalService":
@@ -188,6 +190,39 @@ class ApprovalService:
         except Exception:
             # Audit writes are best-effort in this scaffold.
             return
+
+    def _log_persistent_event(
+        self,
+        *,
+        event_type: str,
+        request_id: str,
+        route_type: str,
+        user_id: str | None,
+        user_role: SupportedUserRole | None,
+        tools_used: list[str],
+        approval: ApprovalRecord,
+        extra: dict | None = None,
+    ) -> None:
+        self.audit_sink.log_event(
+            event_type=event_type,
+            request_id=request_id,
+            route_type=route_type,
+            user_id=user_id,
+            user_role=user_role,
+            tools_used=tools_used,
+            approval_id=approval.approval_id,
+            approval_status=approval.status,
+            incident_code=approval.payload.get("incident_code"),
+            doc_keys=[],
+            payload={
+                "approval_id": approval.approval_id,
+                "request_type": approval.request_type,
+                "target_type": approval.target_type,
+                "target_id": approval.target_id,
+                "decision_notes": approval.decision_notes,
+                **(extra or {}),
+            },
+        )
 
     def _map_approval_row(self, row) -> ApprovalRecord:
         return ApprovalRecord(
@@ -875,7 +910,18 @@ class ApprovalService:
             payload=payload,
         )
 
-        return self.get_approval_status(approval_id)
+        approval = self.get_approval_status(approval_id)
+        self._log_persistent_event(
+            event_type="approval_requested",
+            request_id=request_id,
+            route_type="approval_request",
+            user_id=requester.user_id,
+            user_role=requester.role,
+            tools_used=["create_incident_escalation_request", "get_approval_status"],
+            approval=approval,
+            extra={"proposed_priority": proposed_priority},
+        )
+        return approval
 
     def decide_approval(
         self,
@@ -936,4 +982,15 @@ class ApprovalService:
             },
         )
 
-        return self.get_approval_status(approval_id)
+        updated_approval = self.get_approval_status(approval_id)
+        self._log_persistent_event(
+            event_type="approval_decided",
+            request_id=request_id,
+            route_type="approval_decision",
+            user_id=decider.user_id,
+            user_role=decider.role,
+            tools_used=["decide_approval", "get_approval_status"],
+            approval=updated_approval,
+            extra={"decision": decision},
+        )
+        return updated_approval

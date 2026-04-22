@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import re
+from typing import Callable
 from urllib.parse import urlencode
 from uuid import uuid4
 
+from app.api.audit import ApiAuditSink
 from app.api.approval_service import ApprovalNotFoundError, ApprovalService
 from app.api.incident_service import IncidentService
 from app.api.inventory_service import InventoryService
@@ -35,48 +37,83 @@ class UnsupportedRouteError(Exception):
         self.route_type = route_type
 
 
+@dataclass(frozen=True, slots=True)
+class RouteRule:
+    route_type: str
+    matcher: Callable[[QueryRequest], bool]
+
+
 @dataclass(slots=True)
 class QueryService:
+    audit_sink: ApiAuditSink = field(default_factory=lambda: ApiAuditSink(filename="query_events.jsonl"))
+
+    def _route_rules(self) -> tuple[RouteRule, ...]:
+        return (
+            RouteRule("structured_lookup", self._is_structured_analytics_lookup),
+            RouteRule("structured_lookup", self._is_approval_dashboard_route),
+            RouteRule("structured_lookup", self._is_approval_list_route),
+            RouteRule("structured_lookup", self._is_approval_detail_route),
+            RouteRule("incident_summary", self._is_incident_escalation_status_route),
+            RouteRule("structured_lookup", self._is_inventory_route),
+            RouteRule("escalation_guidance", self._is_escalation_guidance_route),
+            RouteRule("incident_summary", self._is_incident_summary_route),
+        )
+
     def _classify_route(self, request: QueryRequest) -> str:
         if request.route_type_override:
             return request.route_type_override
 
-        query = request.message.lower()
-
-        if (
-            self._is_pending_owner_lookup(request.message)
-            or self._is_oldest_pending_item_lookup(request.message)
-            or self._is_oldest_pending_requester_lookup(request.message)
-            or self._is_oldest_pending_incident_lookup(request.message)
-            or self._is_aged_pending_incident_lookup(request.message)
-            or self._is_approver_bottleneck_lookup(request.message)
-            or self._is_requester_load_lookup(request.message)
-            or self._is_escalation_load_lookup(request.message)
-        ):
-            return "structured_lookup"
-
-        if self._is_approval_dashboard_lookup(request.message):
-            return "structured_lookup"
-
-        if self._is_approval_list_lookup(request.message):
-            return "structured_lookup"
-
-        if self._looks_like_approval_lookup(request.message):
-            return "structured_lookup"
-
-        if self._extract_incident_code(request.message) and self._is_incident_escalation_status_lookup(request.message):
-            return "incident_summary"
-
-        if any(token in query for token in ("inventory", "in stock", "sku", "stock level")):
-            return "structured_lookup"
-
-        if any(token in query for token in ("escalate", "escalation", "high priority", "medium priority", "approve escalation")):
-            return "escalation_guidance"
-
-        if any(token in query for token in ("incident", "inc-", "customer impact", "checkout problem", "outage")):
-            return "incident_summary"
+        for rule in self._route_rules():
+            if rule.matcher(request):
+                return rule.route_type
 
         return "policy_qa"
+
+    def _is_structured_analytics_lookup(self, request: QueryRequest) -> bool:
+        message = request.message
+        return any(
+            matcher(message)
+            for matcher in (
+                self._is_pending_owner_lookup,
+                self._is_oldest_pending_item_lookup,
+                self._is_oldest_pending_requester_lookup,
+                self._is_oldest_pending_incident_lookup,
+                self._is_aged_pending_incident_lookup,
+                self._is_approver_bottleneck_lookup,
+                self._is_requester_load_lookup,
+                self._is_escalation_load_lookup,
+            )
+        )
+
+    def _is_approval_dashboard_route(self, request: QueryRequest) -> bool:
+        return self._is_approval_dashboard_lookup(request.message)
+
+    def _is_approval_list_route(self, request: QueryRequest) -> bool:
+        return self._is_approval_list_lookup(request.message)
+
+    def _is_approval_detail_route(self, request: QueryRequest) -> bool:
+        return self._looks_like_approval_lookup(request.message)
+
+    def _is_incident_escalation_status_route(self, request: QueryRequest) -> bool:
+        return bool(
+            self._extract_incident_code(request.message)
+            and self._is_incident_escalation_status_lookup(request.message)
+        )
+
+    def _is_inventory_route(self, request: QueryRequest) -> bool:
+        query = request.message.lower()
+        return any(token in query for token in ("inventory", "in stock", "sku", "stock level"))
+
+    def _is_escalation_guidance_route(self, request: QueryRequest) -> bool:
+        query = request.message.lower()
+        return any(
+            token in query
+            for token in ("escalate", "escalation", "high priority", "medium priority", "approve escalation")
+        )
+
+    def _is_incident_summary_route(self, request: QueryRequest) -> bool:
+        query = request.message.lower()
+        return any(token in query for token in ("incident", "inc-", "customer impact", "checkout problem", "outage"))
 
     def _extract_content(self, chunk_text: str) -> str:
         marker = "Content:"
@@ -1231,497 +1268,477 @@ class QueryService:
 
         return f"Incident summary guidance: {primary}"
 
-    def handle_query(self, request: QueryRequest, *, request_id: str | None = None) -> QueryResponse:
-        route_type = self._classify_route(request)
-        request_id = request_id or f"req_{uuid4().hex[:12]}"
+    def _collect_approval_ids(self, response: QueryResponse) -> list[str]:
+        approval_ids: list[str] = []
+        if response.data.approval:
+            approval_ids.append(response.data.approval.approval_id)
+        approval_ids.extend(approval.approval_id for approval in response.data.approvals)
+        deduped: list[str] = []
+        for approval_id in approval_ids:
+            if approval_id not in deduped:
+                deduped.append(approval_id)
+        return deduped
 
-        if route_type == "policy_qa":
-            try:
-                retrieval_results = self._retrieve_context(
-                    request,
-                    route_type="policy_qa",
-                    request_id=request_id,
-                )
-            except RetrievalError:
-                raise
+    def _log_query_response(self, request: QueryRequest, response: QueryResponse) -> None:
+        self.audit_sink.log_event(
+            event_type="query_handled",
+            request_id=response.request_id,
+            route_type=response.route_type,
+            user_id=request.user_id,
+            user_role=request.user_role,
+            tools_used=response.meta.tools_used,
+            doc_keys=[citation.doc_key for citation in response.data.citations],
+            approval_ids=self._collect_approval_ids(response),
+            incident_code=response.data.incident.incident_code if response.data.incident else None,
+        )
 
-            citations = self._build_citations(retrieval_results)
-            answer = self._build_answer(retrieval_results)
+    def _handle_policy_query(self, request: QueryRequest, *, request_id: str) -> QueryResponse:
+        retrieval_results = self._retrieve_context(
+            request,
+            route_type="policy_qa",
+            request_id=request_id,
+        )
+        citations = self._build_citations(retrieval_results)
+        answer = self._build_answer(retrieval_results)
+        return QueryResponse(
+            request_id=request_id,
+            route_type="policy_qa",
+            data=QueryResponseData(answer=answer, citations=citations),
+            meta=QueryResponseMeta(
+                citations_included=bool(citations),
+                tools_used=[],
+                approval_involved=False,
+            ),
+        )
 
-            return QueryResponse(
-                request_id=request_id,
-                route_type="policy_qa",
-                data=QueryResponseData(answer=answer, citations=citations),
-                meta=QueryResponseMeta(
-                    citations_included=bool(citations),
-                    tools_used=[],
-                    approval_involved=False,
-                ),
-            )
+    def _handle_incident_summary_query(self, request: QueryRequest, *, request_id: str) -> QueryResponse:
+        incident_code = self._extract_incident_code(request.message)
+        incident: IncidentRecord | None = None
+        timeline: list[IncidentEvent] = []
+        linked_approval: ApprovalRecord | None = None
+        tools_used: list[str] = []
+        retrieval_request = request
 
-        if route_type == "incident_summary":
-            incident_code = self._extract_incident_code(request.message)
-            incident: IncidentRecord | None = None
-            timeline: list[IncidentEvent] = []
-            linked_approval: ApprovalRecord | None = None
-            tools_used: list[str] = []
-            retrieval_request = request
-
-            if incident_code:
-                incident_service = IncidentService.from_env()
-                incident = incident_service.get_incident(incident_code)
-                if incident:
-                    timeline = incident_service.get_incident_timeline(incident.incident_id)
-                    tools_used.extend(["get_incident", "get_incident_timeline"])
-                    retrieval_request = request.model_copy(
-                        update={
-                            "message": self._build_incident_support_query(
-                                request.message,
-                                incident,
-                            )
-                        }
-                    )
-                else:
-                    return QueryResponse(
-                        request_id=request_id,
-                        route_type="incident_summary",
-                        data=QueryResponseData(
-                            answer=f"I couldn't find incident {incident_code} in the structured incident data.",
-                            citations=[],
-                        ),
-                        meta=QueryResponseMeta(
-                            citations_included=False,
-                            tools_used=["get_incident"],
-                            approval_involved=False,
-                        ),
-                    )
-
-            try:
-                retrieval_results = self._retrieve_context(
-                    retrieval_request,
-                    route_type="incident_summary",
-                    request_id=request_id,
-                )
-            except RetrievalError:
-                raise
-
-            citations = self._build_citations(retrieval_results)
-            approval_audit: list[ApprovalAuditEvent] = []
+        if incident_code:
+            incident_service = IncidentService.from_env()
+            incident = incident_service.get_incident(incident_code)
             if incident:
-                try:
-                    approval_service = ApprovalService.from_env()
-                    linked_approval = approval_service.get_latest_incident_approval(incident.incident_id)
-                    if linked_approval and self._is_incident_approval_history_lookup(request.message):
-                        approval_audit = approval_service.get_approval_audit(linked_approval.approval_id)
-                        tools_used.append("get_approval_audit")
-                except Exception:
-                    linked_approval = None
-                    approval_audit = []
-                if linked_approval:
-                    tools_used.append("get_latest_incident_approval")
-            answer = self._build_incident_answer(
-                retrieval_results,
-                incident=incident,
-                timeline=timeline,
-            )
-            if self._is_incident_escalation_status_lookup(request.message):
-                answer = self._build_incident_escalation_status_answer(incident, linked_approval)
-            elif incident and self._is_incident_approval_history_lookup(request.message):
-                answer = self._build_incident_approval_history_answer(incident, linked_approval, approval_audit)
-            elif linked_approval:
-                answer = f"{answer}\n\nApproval state: {self._build_incident_approval_summary(linked_approval)}"
-            recommended_next_step = self._build_incident_next_step(incident, timeline)
-            approval_suggestion = self._build_approval_suggestion(incident)
-            links = self._build_incident_links(incident)
-            if linked_approval:
-                links.extend(self._build_approval_links(linked_approval))
-                links.extend(self._build_approval_audit_links(linked_approval))
-            if approval_suggestion:
-                links.append(approval_suggestion.create_request)
-            links = self._dedupe_links(links)
-
-            return QueryResponse(
-                request_id=request_id,
-                route_type="incident_summary",
-                data=QueryResponseData(
-                    answer=answer,
-                    citations=citations,
-                    approval=linked_approval,
-                    approval_audit=approval_audit,
-                    incident=incident,
-                    incident_timeline=timeline,
-                    customer_impact=incident.customer_impact if incident else None,
-                    recommended_next_step=recommended_next_step,
-                    links=links,
-                    approval_suggestion=approval_suggestion,
-                ),
-                meta=QueryResponseMeta(
-                    citations_included=bool(citations),
-                    tools_used=tools_used,
-                    approval_involved=bool(linked_approval or approval_suggestion),
-                ),
-            )
-
-        if route_type == "structured_lookup":
-            approval_id = self._extract_approval_id(request.message)
-            if (
-                self._is_pending_owner_lookup(request.message)
-                or self._is_oldest_pending_item_lookup(request.message)
-                or self._is_oldest_pending_requester_lookup(request.message)
-                or self._is_oldest_pending_incident_lookup(request.message)
-                or self._is_aged_pending_incident_lookup(request.message)
-                or self._is_approver_bottleneck_lookup(request.message)
-                or self._is_requester_load_lookup(request.message)
-                or self._is_escalation_load_lookup(request.message)
-                or self._is_approval_dashboard_lookup(request.message)
-            ):
-                approval_service = ApprovalService.from_env()
-                incident_code_filter = self._extract_incident_code(request.message)
-                requester_filter = self._extract_requester_filter(request.message)
-                min_pending_age_minutes = self._extract_min_pending_age_minutes(request.message)
-                buckets, metrics = approval_service.get_approval_dashboard(
-                    incident_code=incident_code_filter,
-                    requester=requester_filter,
-                    page_size_per_bucket=5,
+                timeline = incident_service.get_incident_timeline(incident.incident_id)
+                tools_used.extend(["get_incident", "get_incident_timeline"])
+                retrieval_request = request.model_copy(
+                    update={"message": self._build_incident_support_query(request.message, incident)}
                 )
-                total_count = sum(bucket.count for bucket in buckets)
-                dashboard_href = "/api/v1/approvals/dashboard"
-                dashboard_href += self._build_query_string(
-                    incident_code=incident_code_filter,
-                    requester=requester_filter,
-                )
-                summary_href = "/api/v1/approvals/dashboard/summary"
-                summary_href += self._build_query_string(
-                    incident_code=incident_code_filter,
-                    requester=requester_filter,
-                    min_pending_age_minutes=min_pending_age_minutes,
-                )
-                dashboard_links = [
-                    ApiLink(
-                        rel="approval_dashboard",
-                        href=dashboard_href,
-                        method="GET",
-                        description="Browse approval work grouped by status.",
-                    ),
-                    ApiLink(
-                        rel="approval_list",
-                        href=dashboard_href.replace("/approvals/dashboard", "/approvals"),
-                        method="GET",
-                        description="Browse the full approval work queue.",
-                    ),
-                    ApiLink(
-                        rel="approval_dashboard_summary",
-                        href=summary_href,
-                        method="GET",
-                        description="View headline approval metrics and top risks first.",
-                    ),
-                ]
-                if self._is_aged_pending_incident_lookup(request.message):
-                    aged_incidents = approval_service.list_incidents_with_pending_approvals_older_than(
-                        min_pending_age_minutes=min_pending_age_minutes or 0,
-                        requester=requester_filter,
-                    )
-                    answer = self._build_aged_pending_incidents_answer(
-                        aged_incidents,
-                        min_pending_age_minutes=min_pending_age_minutes or 0,
-                        requester=requester_filter,
-                    )
-                else:
-                    answer = (
-                        self._build_pending_owner_answer(
-                            metrics,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                        )
-                        if self._is_pending_owner_lookup(request.message)
-                        else self._build_oldest_pending_requester_answer(
-                            metrics,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                        )
-                        if self._is_oldest_pending_requester_lookup(request.message)
-                        else self._build_oldest_pending_incident_answer(
-                            metrics,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                        )
-                        if self._is_oldest_pending_incident_lookup(request.message)
-                        else self._build_oldest_pending_item_answer(
-                            metrics,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                        )
-                        if self._is_oldest_pending_item_lookup(request.message)
-                        else self._build_approver_bottleneck_answer(
-                            metrics,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                        )
-                        if self._is_approver_bottleneck_lookup(request.message)
-                        else self._build_requester_load_answer(
-                            metrics,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                        )
-                        if self._is_requester_load_lookup(request.message)
-                        else self._build_escalation_load_answer(
-                            metrics,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                        )
-                        if self._is_escalation_load_lookup(request.message)
-                        else self._build_approval_dashboard_answer(
-                            buckets,
-                            metrics,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                        )
-                    )
+            else:
                 return QueryResponse(
                     request_id=request_id,
-                    route_type="structured_lookup",
+                    route_type="incident_summary",
                     data=QueryResponseData(
-                        answer=answer,
+                        answer=f"I couldn't find incident {incident_code} in the structured incident data.",
                         citations=[],
-                        approval_dashboard=buckets,
-                        approval_dashboard_metrics=metrics,
-                        approvals=[approval for bucket in buckets for approval in bucket.approvals],
-                        links=dashboard_links,
                     ),
                     meta=QueryResponseMeta(
                         citations_included=False,
-                        tools_used=["get_approval_dashboard"],
-                        approval_involved=total_count > 0,
+                        tools_used=["get_incident"],
+                        approval_involved=False,
                     ),
                 )
 
-            if self._is_approval_list_lookup(request.message):
+        retrieval_results = self._retrieve_context(
+            retrieval_request,
+            route_type="incident_summary",
+            request_id=request_id,
+        )
+        citations = self._build_citations(retrieval_results)
+        approval_audit: list[ApprovalAuditEvent] = []
+        if incident:
+            try:
                 approval_service = ApprovalService.from_env()
-                status_filter = self._extract_approval_status_filter(request.message)
-                incident_code_filter = self._extract_incident_code(request.message)
-                requester_filter = self._extract_requester_filter(request.message)
-                approvals, total_count = approval_service.list_approvals(
-                    status=status_filter,
-                    incident_code=incident_code_filter,
-                    requester=requester_filter,
-                    page=1,
-                    page_size=20,
-                    sort_by="requested_at",
-                    sort_order="desc",
-                )
-                tool_name = "list_approvals"
-                if status_filter:
-                    tool_name = f"{tool_name}:{status_filter}"
-                if incident_code_filter:
-                    tool_name = f"{tool_name}:incident"
-                    if status_filter:
-                        tool_name = f"list_approvals:{status_filter}:incident"
-                list_href = "/api/v1/approvals"
-                list_href += self._build_query_string(
-                    status=status_filter,
-                    incident_code=incident_code_filter,
-                    requester=requester_filter,
-                )
-                links = [
-                    ApiLink(
-                        rel="approval_list",
-                        href=list_href,
-                        method="GET",
-                        description="Browse approval work items with optional status filtering.",
-                    )
-                ]
-                for approval in approvals[:3]:
-                    links.extend(self._build_approval_links(approval))
-                return QueryResponse(
-                    request_id=request_id,
-                    route_type="structured_lookup",
-                    data=QueryResponseData(
-                        answer=self._build_approval_list_answer(
-                            approvals,
-                            status_filter=status_filter,
-                            incident_code=incident_code_filter,
-                            requester=requester_filter,
-                            total_count=total_count,
-                        ),
-                        citations=[],
-                        approvals=approvals,
-                        links=self._dedupe_links(links),
-                    ),
-                    meta=QueryResponseMeta(
-                        citations_included=False,
-                        tools_used=[tool_name],
-                        approval_involved=bool(approvals),
-                    ),
-                )
-
-            if self._looks_like_approval_lookup(request.message):
-                if not approval_id:
-                    return QueryResponse(
-                        request_id=request_id,
-                        route_type="structured_lookup",
-                        data=QueryResponseData(
-                            answer=(
-                                "I can look up approval status through `/api/v1/query`, but I need the approval ID "
-                                "from `/api/v1/approvals/{approval_id}`."
-                            ),
-                            citations=[],
-                        ),
-                        meta=QueryResponseMeta(
-                            citations_included=False,
-                            tools_used=["get_approval_status"],
-                            approval_involved=True,
-                        ),
-                    )
-
-                try:
-                    approval_service = ApprovalService.from_env()
-                    approval = approval_service.get_approval_status(approval_id)
-                except ApprovalNotFoundError:
-                    return QueryResponse(
-                        request_id=request_id,
-                        route_type="structured_lookup",
-                        data=QueryResponseData(
-                            answer=f"I couldn't find approval {approval_id} in the structured approval data.",
-                            citations=[],
-                        ),
-                        meta=QueryResponseMeta(
-                            citations_included=False,
-                            tools_used=["get_approval_status"],
-                            approval_involved=True,
-                        ),
-                    )
-
-                audit_events: list[ApprovalAuditEvent] = []
-                tools_used = ["get_approval_status"]
-                if self._is_approval_history_lookup(request.message) or self._is_approval_reason_lookup(request.message):
-                    audit_events = approval_service.get_approval_audit(approval_id)
+                linked_approval = approval_service.get_latest_incident_approval(incident.incident_id)
+                if linked_approval and self._is_incident_approval_history_lookup(request.message):
+                    approval_audit = approval_service.get_approval_audit(linked_approval.approval_id)
                     tools_used.append("get_approval_audit")
+            except Exception:
+                linked_approval = None
+                approval_audit = []
+            if linked_approval:
+                tools_used.append("get_latest_incident_approval")
+        answer = self._build_incident_answer(retrieval_results, incident=incident, timeline=timeline)
+        if self._is_incident_escalation_status_lookup(request.message):
+            answer = self._build_incident_escalation_status_answer(incident, linked_approval)
+        elif incident and self._is_incident_approval_history_lookup(request.message):
+            answer = self._build_incident_approval_history_answer(incident, linked_approval, approval_audit)
+        elif linked_approval:
+            answer = f"{answer}\n\nApproval state: {self._build_incident_approval_summary(linked_approval)}"
+        recommended_next_step = self._build_incident_next_step(incident, timeline)
+        approval_suggestion = self._build_approval_suggestion(incident)
+        links = self._build_incident_links(incident)
+        if linked_approval:
+            links.extend(self._build_approval_links(linked_approval))
+            links.extend(self._build_approval_audit_links(linked_approval))
+        if approval_suggestion:
+            links.append(approval_suggestion.create_request)
+        return QueryResponse(
+            request_id=request_id,
+            route_type="incident_summary",
+            data=QueryResponseData(
+                answer=answer,
+                citations=citations,
+                approval=linked_approval,
+                approval_audit=approval_audit,
+                incident=incident,
+                incident_timeline=timeline,
+                customer_impact=incident.customer_impact if incident else None,
+                recommended_next_step=recommended_next_step,
+                links=self._dedupe_links(links),
+                approval_suggestion=approval_suggestion,
+            ),
+            meta=QueryResponseMeta(
+                citations_included=bool(citations),
+                tools_used=tools_used,
+                approval_involved=bool(linked_approval or approval_suggestion),
+            ),
+        )
 
-                return QueryResponse(
-                    request_id=request_id,
-                    route_type="structured_lookup",
-                    data=QueryResponseData(
-                        answer=(
-                            self._build_approval_reason_answer(approval, audit_events)
-                            if self._is_approval_reason_lookup(request.message)
-                            else
-                            self._build_approval_history_answer(request.message, approval, audit_events)
-                            if self._is_approval_history_lookup(request.message)
-                            else self._build_approval_answer(request.message, approval)
-                        ),
-                        citations=[],
-                        approval=approval,
-                        approval_audit=audit_events,
-                        links=self._dedupe_links(
-                            self._build_approval_links(approval) + self._build_approval_audit_links(approval)
-                        ),
-                    ),
-                    meta=QueryResponseMeta(
-                        citations_included=False,
-                        tools_used=tools_used,
-                        approval_involved=True,
-                    ),
+    def _handle_dashboard_structured_lookup(self, request: QueryRequest, *, request_id: str) -> QueryResponse:
+        approval_service = ApprovalService.from_env()
+        incident_code_filter = self._extract_incident_code(request.message)
+        requester_filter = self._extract_requester_filter(request.message)
+        min_pending_age_minutes = self._extract_min_pending_age_minutes(request.message)
+        buckets, metrics = approval_service.get_approval_dashboard(
+            incident_code=incident_code_filter,
+            requester=requester_filter,
+            page_size_per_bucket=5,
+        )
+        total_count = sum(bucket.count for bucket in buckets)
+        dashboard_href = "/api/v1/approvals/dashboard" + self._build_query_string(
+            incident_code=incident_code_filter,
+            requester=requester_filter,
+        )
+        summary_href = "/api/v1/approvals/dashboard/summary" + self._build_query_string(
+            incident_code=incident_code_filter,
+            requester=requester_filter,
+            min_pending_age_minutes=min_pending_age_minutes,
+        )
+        dashboard_links = [
+            ApiLink(
+                rel="approval_dashboard",
+                href=dashboard_href,
+                method="GET",
+                description="Browse approval work grouped by status.",
+            ),
+            ApiLink(
+                rel="approval_list",
+                href=dashboard_href.replace("/approvals/dashboard", "/approvals"),
+                method="GET",
+                description="Browse the full approval work queue.",
+            ),
+            ApiLink(
+                rel="approval_dashboard_summary",
+                href=summary_href,
+                method="GET",
+                description="View headline approval metrics and top risks first.",
+            ),
+        ]
+        if self._is_aged_pending_incident_lookup(request.message):
+            aged_incidents = approval_service.list_incidents_with_pending_approvals_older_than(
+                min_pending_age_minutes=min_pending_age_minutes or 0,
+                requester=requester_filter,
+            )
+            answer = self._build_aged_pending_incidents_answer(
+                aged_incidents,
+                min_pending_age_minutes=min_pending_age_minutes or 0,
+                requester=requester_filter,
+            )
+        else:
+            answer_builders: tuple[tuple[Callable[[str], bool], Callable[..., str]], ...] = (
+                (self._is_pending_owner_lookup, self._build_pending_owner_answer),
+                (self._is_oldest_pending_requester_lookup, self._build_oldest_pending_requester_answer),
+                (self._is_oldest_pending_incident_lookup, self._build_oldest_pending_incident_answer),
+                (self._is_oldest_pending_item_lookup, self._build_oldest_pending_item_answer),
+                (self._is_approver_bottleneck_lookup, self._build_approver_bottleneck_answer),
+                (self._is_requester_load_lookup, self._build_requester_load_answer),
+                (self._is_escalation_load_lookup, self._build_escalation_load_answer),
+            )
+            answer = ""
+            for matcher, builder in answer_builders:
+                if matcher(request.message):
+                    answer = builder(
+                        metrics,
+                        incident_code=incident_code_filter,
+                        requester=requester_filter,
+                    )
+                    break
+            if not answer:
+                answer = self._build_approval_dashboard_answer(
+                    buckets,
+                    metrics,
+                    incident_code=incident_code_filter,
+                    requester=requester_filter,
                 )
+        return QueryResponse(
+            request_id=request_id,
+            route_type="structured_lookup",
+            data=QueryResponseData(
+                answer=answer,
+                citations=[],
+                approval_dashboard=buckets,
+                approval_dashboard_metrics=metrics,
+                approvals=[approval for bucket in buckets for approval in bucket.approvals],
+                links=dashboard_links,
+            ),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=["get_approval_dashboard"],
+                approval_involved=total_count > 0,
+            ),
+        )
 
-            product_query = self._extract_inventory_query(request.message)
-            outcome = InventoryService.from_env().lookup_inventory(product_query)
+    def _handle_approval_list_query(self, request: QueryRequest, *, request_id: str) -> QueryResponse:
+        approval_service = ApprovalService.from_env()
+        status_filter = self._extract_approval_status_filter(request.message)
+        incident_code_filter = self._extract_incident_code(request.message)
+        requester_filter = self._extract_requester_filter(request.message)
+        approvals, total_count = approval_service.list_approvals(
+            status=status_filter,
+            incident_code=incident_code_filter,
+            requester=requester_filter,
+            page=1,
+            page_size=20,
+            sort_by="requested_at",
+            sort_order="desc",
+        )
+        tool_name = "list_approvals"
+        if status_filter:
+            tool_name = f"{tool_name}:{status_filter}"
+        if incident_code_filter:
+            tool_name = f"list_approvals:{status_filter}:incident" if status_filter else f"{tool_name}:incident"
+        list_href = "/api/v1/approvals" + self._build_query_string(
+            status=status_filter,
+            incident_code=incident_code_filter,
+            requester=requester_filter,
+        )
+        links = [
+            ApiLink(
+                rel="approval_list",
+                href=list_href,
+                method="GET",
+                description="Browse approval work items with optional status filtering.",
+            )
+        ]
+        for approval in approvals[:3]:
+            links.extend(self._build_approval_links(approval))
+        return QueryResponse(
+            request_id=request_id,
+            route_type="structured_lookup",
+            data=QueryResponseData(
+                answer=self._build_approval_list_answer(
+                    approvals,
+                    status_filter=status_filter,
+                    incident_code=incident_code_filter,
+                    requester=requester_filter,
+                    total_count=total_count,
+                ),
+                citations=[],
+                approvals=approvals,
+                links=self._dedupe_links(links),
+            ),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=[tool_name],
+                approval_involved=bool(approvals),
+            ),
+        )
+
+    def _handle_approval_detail_query(self, request: QueryRequest, *, request_id: str) -> QueryResponse:
+        approval_id = self._extract_approval_id(request.message)
+        if not approval_id:
             return QueryResponse(
                 request_id=request_id,
                 route_type="structured_lookup",
                 data=QueryResponseData(
-                    answer=outcome.answer,
+                    answer=(
+                        "I can look up approval status through `/api/v1/query`, but I need the approval ID "
+                        "from `/api/v1/approvals/{approval_id}`."
+                    ),
                     citations=[],
-                    product=outcome.product,
-                    inventory_results=outcome.inventory_results,
                 ),
                 meta=QueryResponseMeta(
                     citations_included=False,
-                    tools_used=["resolve_product", "check_inventory"],
-                    approval_involved=False,
+                    tools_used=["get_approval_status"],
+                    approval_involved=True,
                 ),
             )
 
-        if route_type == "escalation_guidance":
-            incident_code = self._extract_incident_code(request.message)
-            incident: IncidentRecord | None = None
-            timeline: list[IncidentEvent] = []
-            tools_used: list[str] = []
-            retrieval_request = request
-
-            if incident_code:
-                incident_service = IncidentService.from_env()
-                incident = incident_service.get_incident(incident_code)
-                if incident:
-                    timeline = incident_service.get_incident_timeline(incident.incident_id)
-                    tools_used.extend(["get_incident", "get_incident_timeline"])
-                    retrieval_request = request.model_copy(
-                        update={
-                            "message": self._build_incident_support_query(
-                                request.message,
-                                incident,
-                            )
-                        }
-                    )
-                else:
-                    return QueryResponse(
-                        request_id=request_id,
-                        route_type="escalation_guidance",
-                        data=QueryResponseData(
-                            answer=f"I couldn't find incident {incident_code} in the structured incident data.",
-                            citations=[],
-                        ),
-                        meta=QueryResponseMeta(
-                            citations_included=False,
-                            tools_used=["get_incident"],
-                            approval_involved=False,
-                        ),
-                    )
-
-            try:
-                retrieval_results = self._retrieve_context(
-                    retrieval_request,
-                    route_type="escalation_guidance",
-                    request_id=request_id,
-                )
-            except RetrievalError:
-                raise
-
-            citations = self._build_citations(retrieval_results)
-            approval_suggestion = self._build_approval_suggestion(incident)
-            links = self._build_incident_links(incident)
-            if approval_suggestion:
-                links.append(approval_suggestion.create_request)
-            links = self._dedupe_links(links)
-
+        approval_service = ApprovalService.from_env()
+        try:
+            approval = approval_service.get_approval_status(approval_id)
+        except ApprovalNotFoundError:
             return QueryResponse(
                 request_id=request_id,
-                route_type="escalation_guidance",
+                route_type="structured_lookup",
                 data=QueryResponseData(
-                    answer=self._build_escalation_answer(
-                        retrieval_results,
-                        incident=incident,
-                        approval_suggestion=approval_suggestion,
-                    ),
-                    citations=citations,
-                    incident=incident,
-                    incident_timeline=timeline,
-                    customer_impact=incident.customer_impact if incident else None,
-                    recommended_next_step=self._build_escalation_next_step(incident, approval_suggestion),
-                    links=links,
-                    approval_suggestion=approval_suggestion,
+                    answer=f"I couldn't find approval {approval_id} in the structured approval data.",
+                    citations=[],
                 ),
                 meta=QueryResponseMeta(
-                    citations_included=bool(citations),
-                    tools_used=tools_used,
-                    approval_involved=bool(approval_suggestion),
+                    citations_included=False,
+                    tools_used=["get_approval_status"],
+                    approval_involved=True,
                 ),
             )
 
-        raise UnsupportedRouteError(
-            route_type=route_type,
-            message=(
-                "The `/query` route is currently wired for policy/process Q&A, "
-                "incident summaries, escalation guidance, and inventory lookup only. "
-                f"The request was classified as `{route_type}`."
+        audit_events: list[ApprovalAuditEvent] = []
+        tools_used = ["get_approval_status"]
+        if self._is_approval_history_lookup(request.message) or self._is_approval_reason_lookup(request.message):
+            audit_events = approval_service.get_approval_audit(approval_id)
+            tools_used.append("get_approval_audit")
+
+        answer = self._build_approval_answer(request.message, approval)
+        if self._is_approval_reason_lookup(request.message):
+            answer = self._build_approval_reason_answer(approval, audit_events)
+        elif self._is_approval_history_lookup(request.message):
+            answer = self._build_approval_history_answer(request.message, approval, audit_events)
+
+        return QueryResponse(
+            request_id=request_id,
+            route_type="structured_lookup",
+            data=QueryResponseData(
+                answer=answer,
+                citations=[],
+                approval=approval,
+                approval_audit=audit_events,
+                links=self._dedupe_links(
+                    self._build_approval_links(approval) + self._build_approval_audit_links(approval)
+                ),
+            ),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=tools_used,
+                approval_involved=True,
             ),
         )
+
+    def _handle_inventory_query(self, request: QueryRequest, *, request_id: str) -> QueryResponse:
+        product_query = self._extract_inventory_query(request.message)
+        outcome = InventoryService.from_env().lookup_inventory(product_query)
+        return QueryResponse(
+            request_id=request_id,
+            route_type="structured_lookup",
+            data=QueryResponseData(
+                answer=outcome.answer,
+                citations=[],
+                product=outcome.product,
+                inventory_results=outcome.inventory_results,
+            ),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=["resolve_product", "check_inventory"],
+                approval_involved=False,
+            ),
+        )
+
+    def _handle_structured_lookup_query(self, request: QueryRequest, *, request_id: str) -> QueryResponse:
+        if self._is_structured_analytics_lookup(request) or self._is_approval_dashboard_lookup(request.message):
+            return self._handle_dashboard_structured_lookup(request, request_id=request_id)
+        if self._is_approval_list_lookup(request.message):
+            return self._handle_approval_list_query(request, request_id=request_id)
+        if self._looks_like_approval_lookup(request.message):
+            return self._handle_approval_detail_query(request, request_id=request_id)
+        return self._handle_inventory_query(request, request_id=request_id)
+
+    def _handle_escalation_guidance_query(self, request: QueryRequest, *, request_id: str) -> QueryResponse:
+        incident_code = self._extract_incident_code(request.message)
+        incident: IncidentRecord | None = None
+        timeline: list[IncidentEvent] = []
+        tools_used: list[str] = []
+        retrieval_request = request
+
+        if incident_code:
+            incident_service = IncidentService.from_env()
+            incident = incident_service.get_incident(incident_code)
+            if incident:
+                timeline = incident_service.get_incident_timeline(incident.incident_id)
+                tools_used.extend(["get_incident", "get_incident_timeline"])
+                retrieval_request = request.model_copy(
+                    update={"message": self._build_incident_support_query(request.message, incident)}
+                )
+            else:
+                return QueryResponse(
+                    request_id=request_id,
+                    route_type="escalation_guidance",
+                    data=QueryResponseData(
+                        answer=f"I couldn't find incident {incident_code} in the structured incident data.",
+                        citations=[],
+                    ),
+                    meta=QueryResponseMeta(
+                        citations_included=False,
+                        tools_used=["get_incident"],
+                        approval_involved=False,
+                    ),
+                )
+
+        retrieval_results = self._retrieve_context(
+            retrieval_request,
+            route_type="escalation_guidance",
+            request_id=request_id,
+        )
+        citations = self._build_citations(retrieval_results)
+        approval_suggestion = self._build_approval_suggestion(incident)
+        links = self._build_incident_links(incident)
+        if approval_suggestion:
+            links.append(approval_suggestion.create_request)
+        return QueryResponse(
+            request_id=request_id,
+            route_type="escalation_guidance",
+            data=QueryResponseData(
+                answer=self._build_escalation_answer(
+                    retrieval_results,
+                    incident=incident,
+                    approval_suggestion=approval_suggestion,
+                ),
+                citations=citations,
+                incident=incident,
+                incident_timeline=timeline,
+                customer_impact=incident.customer_impact if incident else None,
+                recommended_next_step=self._build_escalation_next_step(incident, approval_suggestion),
+                links=self._dedupe_links(links),
+                approval_suggestion=approval_suggestion,
+            ),
+            meta=QueryResponseMeta(
+                citations_included=bool(citations),
+                tools_used=tools_used,
+                approval_involved=bool(approval_suggestion),
+            ),
+        )
+
+    def handle_query(self, request: QueryRequest, *, request_id: str | None = None) -> QueryResponse:
+        route_type = self._classify_route(request)
+        request_id = request_id or f"req_{uuid4().hex[:12]}"
+        handlers: dict[str, Callable[[QueryRequest], QueryResponse]] = {
+            "policy_qa": lambda current_request: self._handle_policy_query(current_request, request_id=request_id),
+            "incident_summary": lambda current_request: self._handle_incident_summary_query(
+                current_request,
+                request_id=request_id,
+            ),
+            "structured_lookup": lambda current_request: self._handle_structured_lookup_query(
+                current_request,
+                request_id=request_id,
+            ),
+            "escalation_guidance": lambda current_request: self._handle_escalation_guidance_query(
+                current_request,
+                request_id=request_id,
+            ),
+        }
+        if route_type not in handlers:
+            raise UnsupportedRouteError(
+                route_type=route_type,
+                message=(
+                    "The `/query` route is currently wired for policy/process Q&A, "
+                    "incident summaries, escalation guidance, and inventory lookup only. "
+                    f"The request was classified as `{route_type}`."
+                ),
+            )
+
+        response = handlers[route_type](request)
+        self._log_query_response(request, response)
+        return response

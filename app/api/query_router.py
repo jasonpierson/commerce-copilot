@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Header, status
 from fastapi.responses import JSONResponse
 
+from app.api.auth import resolve_demo_principal
 from app.api.query_service import QueryService, UnsupportedRouteError
-from app.api.schemas import ErrorDetail, ErrorResponse, QueryRequest, QueryResponse
+from app.api.schemas import ErrorDetail, ErrorResponse, QueryRequest, QueryResponse, SupportedUserRole
 from app.retrieval.exceptions import RetrievalError
 
 router = APIRouter(tags=["query"])
@@ -20,9 +21,22 @@ router = APIRouter(tags=["query"])
         502: {"model": ErrorResponse},
     },
 )
-def query(request: QueryRequest) -> QueryResponse | JSONResponse:
+def query(
+    request: QueryRequest,
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    x_user_role: SupportedUserRole | None = Header(default=None, alias="X-User-Role"),
+) -> QueryResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
     service = QueryService()
+    principal = resolve_demo_principal(
+        header_user_id=x_user_id,
+        header_user_role=x_user_role,
+        fallback_user_id=request.user_id,
+        fallback_user_role=request.user_role,
+    )
+    request = request.model_copy(
+        update={"user_id": principal.user_id, "user_role": principal.user_role}
+    )
 
     try:
         return service.handle_query(request, request_id=request_id)

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Header, Query, status
 from fastapi.responses import JSONResponse
 
+from app.api.auth import resolve_demo_principal
 from app.api.approval_service import (
     ApprovalConflictError,
     ApprovalNotFoundError,
@@ -34,6 +35,7 @@ from app.api.schemas import (
     OperatorDashboardData,
     OperatorDashboardResponse,
     QueryResponseMeta,
+    SupportedUserRole,
 )
 
 router = APIRouter(tags=["approvals"])
@@ -66,8 +68,16 @@ def _error_response(
 )
 def create_incident_escalation(
     request: CreateEscalationRequest,
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    x_user_role: SupportedUserRole | None = Header(default=None, alias="X-User-Role"),
 ) -> ApprovalRequestResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    principal = resolve_demo_principal(
+        header_user_id=x_user_id,
+        header_user_role=x_user_role,
+        fallback_user_id=request.requested_by_user_id,
+        fallback_user_role=request.requested_by_role,
+    )
 
     try:
         incident_service = IncidentService.from_env()
@@ -83,8 +93,8 @@ def create_incident_escalation(
         approval = ApprovalService.from_env().create_incident_escalation_request(
             incident_id=incident.incident_id,
             incident_code=incident.incident_code,
-            requested_by_user_id=request.requested_by_user_id,
-            requested_by_role=request.requested_by_role,
+            requested_by_user_id=principal.user_id,
+            requested_by_role=principal.user_role,
             escalation_reason=request.escalation_reason,
             proposed_priority=request.proposed_priority,
             draft_summary=request.draft_summary,
@@ -465,14 +475,22 @@ def get_approval_audit(
 def decide_approval(
     approval_id: str,
     request: ApprovalDecisionRequest,
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    x_user_role: SupportedUserRole | None = Header(default=None, alias="X-User-Role"),
 ) -> ApprovalDecisionResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    principal = resolve_demo_principal(
+        header_user_id=x_user_id,
+        header_user_role=x_user_role,
+        fallback_user_id=request.decider_user_id,
+        fallback_user_role=request.decider_role,
+    )
 
     try:
         approval = ApprovalService.from_env().decide_approval(
             approval_id=approval_id,
-            decider_user_id=request.decider_user_id,
-            decider_role=request.decider_role,
+            decider_user_id=principal.user_id,
+            decider_role=principal.user_role,
             decision=request.decision,
             decision_notes=request.decision_notes,
             request_id=request_id,

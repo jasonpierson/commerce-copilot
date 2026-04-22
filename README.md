@@ -162,6 +162,21 @@ Shared response shape:
 - `GET /api/v1/approvals/{approval_id}/audit`
 - `POST /api/v1/approvals/{approval_id}/decision`
 
+### Mock Auth for Demos
+This repo now uses explicit mock/demo auth headers for user context and approval decisions:
+- `X-User-Id`
+- `X-User-Role`
+
+What this does:
+- keeps the project demo-friendly
+- makes approval role boundaries explicit in code
+- lets us show governance behavior without pretending this is production auth
+
+Current behavior:
+- query and approval routes accept the headers above
+- approval decisions only succeed for `ops_manager` or `admin`
+- if headers are present, they override any fallback role/user fields in the JSON body
+
 ## Example Query Behaviors
 
 ### Policy / Process
@@ -482,6 +497,7 @@ This scripted demo covers:
 - policy question
 - inventory lookup
 - incident summary
+- escalation guidance
 - escalation request
 - approval status
 - approval decision
@@ -492,10 +508,10 @@ This scripted demo covers:
 # 1. create an escalation approval request
 curl -s http://127.0.0.1:8000/api/v1/escalations \
   -H 'Content-Type: application/json' \
+  -H 'X-User-Id: demo-support-001' \
+  -H 'X-User-Role: support_analyst' \
   -d '{
     "incident_code": "INC-1091",
-    "requested_by_user_id": "demo-support-001",
-    "requested_by_role": "support_analyst",
     "escalation_reason": "Customer impact remains elevated.",
     "proposed_priority": "critical",
     "draft_summary": "Escalate to management due to ongoing checkout failures."
@@ -507,11 +523,11 @@ curl -s http://127.0.0.1:8000/api/v1/approvals/<approval_id>
 # 3. approve or reject the request
 curl -s http://127.0.0.1:8000/api/v1/approvals/<approval_id>/decision \
   -H 'Content-Type: application/json' \
+  -H 'X-User-Id: demo-ops-manager-001' \
+  -H 'X-User-Role: ops_manager' \
   -d '{
     "decision": "approved",
-    "decision_notes": "Approved for incident coordination.",
-    "decider_user_id": "demo-ops-manager-001",
-    "decider_role": "ops_manager"
+    "decision_notes": "Approved for incident coordination."
   }'
 
 # 4. inspect audit history
@@ -524,21 +540,36 @@ Expected sequence:
 - decide approval
 - inspect audit/history
 
-### Retrieval Event Logs
+### Persistent Event Logs
 
-Retrieval events are persisted to:
+Structured JSONL logs are persisted to:
 - `artifacts/retrieval_events.jsonl`
+- `artifacts/query_events.jsonl`
+- `artifacts/approval_events.jsonl`
 
-Each log record includes at least:
-- `event_type`
+What we log:
 - `request_id`
 - `route_type`
-- `doc_keys`
-- `result_count`
+- `user_role`
+- `doc_keys` for retrieval-backed answers
+- `tools_used`
+- `approval_id` / `approval_ids` when approval state is involved
 
-Typical ways to create the log:
+Typical ways to create the logs:
 - `python3 scripts/run_retrieval_eval.py --mode adapter`
-- `POST /api/v1/query` for retrieval-backed routes
+- `POST /api/v1/query`
+- `POST /api/v1/escalations`
+- `POST /api/v1/approvals/{approval_id}/decision`
+
+Quick trace flow:
+1. run a query or approval workflow call
+2. copy the returned `request_id`
+3. search the artifacts:
+
+```bash
+rg "req_" artifacts/*.jsonl
+rg "<request_id>" artifacts/*.jsonl
+```
 
 ## Future Public Deployment Security Notes
 

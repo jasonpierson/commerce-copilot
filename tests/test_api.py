@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import json
+from pathlib import Path
+import tempfile
 from unittest import TestCase
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from app.api.approval_service import ApprovalConflictError, ApprovalNotFoundError, ApprovalPermissionError
+from app.api.audit import ApiAuditSink
 from app.api.main import app
 from app.api.query_service import QueryService
 from app.api.schemas import (
@@ -24,6 +28,7 @@ from app.api.schemas import (
     IncidentRecord,
     InventoryResult,
     ProductMatch,
+    QueryRequest,
     UserSummary,
 )
 from app.api.inventory_service import InventoryLookupOutcome
@@ -1921,3 +1926,80 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(first_response.status_code, 200)
         self.assertEqual(second_response.status_code, 409)
         self.assertEqual(second_response.json()["error"]["code"], "APPROVAL_CONFLICT")
+
+    def test_escalation_decision_uses_mock_auth_headers_over_body_role(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_incident_service = FakeIncidentService()
+
+        with patch(
+            "app.api.approval_router.IncidentService.from_env",
+            return_value=fake_incident_service,
+        ), patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            create_response = self.client.post(
+                "/api/v1/escalations",
+                json={
+                    "incident_code": "INC-1042",
+                    "escalation_reason": "Customer impact is growing and mitigation is incomplete.",
+                    "proposed_priority": "high",
+                    "draft_summary": "Recommend escalation due to sustained checkout failures.",
+                    "requested_by_role": "engineering_support",
+                },
+                headers={
+                    "X-User-Id": "usr_support_header",
+                    "X-User-Role": "engineering_support",
+                },
+            )
+            approval_id = create_response.json()["data"]["approval"]["approval_id"]
+
+        with patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                f"/api/v1/approvals/{approval_id}/decision",
+                json={
+                    "decision": "approved",
+                    "decision_notes": "Body says ops manager, headers say support.",
+                    "decider_role": "ops_manager",
+                },
+                headers={
+                    "X-User-Id": "usr_support_header",
+                    "X-User-Role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"]["code"], "APPROVAL_PERMISSION_DENIED")
+
+    def test_query_logging_persists_request_trace(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audit_sink = ApiAuditSink(output_path=Path(temp_dir) / "query_events.jsonl")
+            service = QueryService(audit_sink=audit_sink)
+
+            with patch(
+                "app.api.query_service.InventoryService.from_env",
+                return_value=FakeInventoryService(),
+            ):
+                response = service.handle_query(
+                    QueryRequest(
+                        message="Check inventory for the Phantom X shoes.",
+                        user_id="usr_trace",
+                        user_role="support_analyst",
+                    ),
+                    request_id="req_trace_001",
+                )
+
+            lines = (Path(temp_dir) / "query_events.jsonl").read_text().strip().splitlines()
+            self.assertEqual(len(lines), 1)
+            payload = json.loads(lines[0])
+            self.assertEqual(payload["event_type"], "query_handled")
+            self.assertEqual(payload["request_id"], "req_trace_001")
+            self.assertEqual(payload["route_type"], "structured_lookup")
+            self.assertEqual(payload["user_role"], "support_analyst")
+            self.assertEqual(payload["tools_used"], ["resolve_product", "check_inventory"])
+            self.assertEqual(payload["doc_keys"], [])
+            self.assertEqual(payload["approval_ids"], [])
+            self.assertEqual(response.request_id, "req_trace_001")
