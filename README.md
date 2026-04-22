@@ -11,6 +11,27 @@ Governed Commerce Operations Copilot is a Python/FastAPI prototype for a support
 
 The project started as an ingestion/retrieval scaffold and has grown into a working backend slice for policy Q&A, incident support, inventory lookup, and approval workflow operations.
 
+## 2-Minute Demo
+
+```bash
+make install
+make seed
+make run-api
+```
+
+In a second shell:
+
+```bash
+make demo
+```
+
+What the demo shows:
+- policy/process Q&A with citations
+- inventory lookup against structured data
+- incident summary with retrieval + structured context
+- escalation guidance
+- approval request, status, decision, and audit trail
+
 ## Current Status
 
 ### Implemented
@@ -32,12 +53,50 @@ The project started as an ingestion/retrieval scaffold and has grown into a work
 
 ### Not Implemented Yet
 - frontend/UI
-- authentication/authorization beyond demo role assumptions
+- production authentication/authorization beyond explicit mock auth headers
 - production-grade approval notifications or workflow orchestration
 - incident/approval analytics beyond the current dashboard metrics
-- deployment packaging and infra automation
+- full production deployment packaging and infra automation
+
+## What Makes This Enterprise-Focused
+
+- grounded answers
+  - retrieval-backed responses include citations to policies, SOPs, and runbooks
+- governed actions
+  - incident escalation is approval-gated instead of directly executed
+- role-aware behavior
+  - mock auth headers make principal boundaries explicit during demos
+- operational inspectability
+  - request traces persist to JSONL artifacts so flows can be audited after the session
+- mixed-mode architecture
+  - retrieval is used where narrative guidance is needed
+  - structured data is used where exact operational state matters
+
+## Implementation Boundary
+
+### Real / Implemented
+- FastAPI API layer
+- real OpenAI embeddings for ingestion and retrieval
+- real structured reads/writes against the connected demo database
+- persistent JSONL request tracing
+- seeded approval, inventory, and incident demo paths
+
+### Mock / Demo-Only
+- auth via `X-User-Id` and `X-User-Role`
+- disposable seeded operational data
+- approval workflow used as a demo-safe governance simulation
+
+### Future Work
+- production auth
+- notificationing / escalation orchestration
+- frontend operator console
+- containerized deployment path with managed infra assumptions
 
 ## Architecture
+
+See also:
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/deployment.md`](docs/deployment.md)
 
 ```text
 app/
@@ -83,6 +142,24 @@ scripts/
   seed_domain_data.py      Seeds demo users/catalog/incidents
   cleanup_demo_data.py     Cleans demo data or approval-only artifacts
 ```
+
+## Fast Local Run Path
+
+### Make-based starter path
+
+```bash
+make install
+make seed
+make run-api
+```
+
+Useful commands:
+- `make test`
+- `make eval`
+- `make smoke`
+- `make demo`
+- `make clean-approvals`
+- `make clean-full`
 
 ## Core Concepts
 
@@ -677,11 +754,14 @@ python -m unittest discover -s tests -p 'test_*.py' -v
 
 Current covered areas include:
 - inventory lookups
+- inventory/incident extraction helpers
 - incident detail and incident summary flows
 - escalation request/decision flows
 - approval status/history/audit flows
 - approval list/dashboard flows
 - `/api/v1/query` approval operations behavior
+- mock auth enforcement on approval decisions
+- persistent query trace side effects
 
 ## Demo Seed Data
 
@@ -717,6 +797,8 @@ Representative seeded product:
 If you are new to the repo, start here:
 - `README.md`
 - `CHANGELOG.md`
+- `docs/architecture.md`
+- `docs/deployment.md`
 - `app/api/query_service.py`
 - `app/api/approval_service.py`
 - `app/retrieval/service.py`

@@ -5,6 +5,17 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 ## Unreleased
 
 ### Added
+- Declarative route-rule structure plus route-specific handlers in `app/api/query_service.py`
+- Persistent application trace logs:
+  - `artifacts/query_events.jsonl`
+  - `artifacts/approval_events.jsonl`
+- Explicit mock auth helpers using:
+  - `X-User-Id`
+  - `X-User-Role`
+- `Makefile` starter commands for install, run, seed, demo, eval, test, and cleanup
+- `docs/architecture.md`
+- `docs/deployment.md`
+- Focused query-service extraction tests in `tests/test_query_service.py`
 - Pending-approval owner answers in `/api/v1/query`, including incident-scoped questions like `Who is holding the pending approvals for INC-1091?`
 - Dashboard filters for `incident_code` and `requester`
 - Dashboard metrics for:
@@ -35,6 +46,15 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - `GET /api/v1/operator/dashboard` as a UI-oriented operator dashboard shape
 
 ### Changed
+- `/api/v1/query` orchestration is now split into cleaner route handlers instead of one large branch-heavy method
+- Approval create/decision flows now persist request-trace artifacts to disk
+- Approval and query routers now resolve the acting demo principal from headers before applying workflow logic
+- `scripts/demo_queries.py` now uses the mock auth headers and includes escalation guidance in the golden path
+- `README.md` now includes:
+  - a 2-minute demo
+  - enterprise-focused positioning
+  - real vs mock vs future-work boundaries
+  - Make-based local run instructions
 - `/api/v1/query` dashboard responses now return grouped dashboard buckets plus structured dashboard metrics
 - Approval list and dashboard service methods now support requester-aware filtering
 - Dashboard metrics now report both 24-hour and 7-day approval activity windows
