@@ -732,12 +732,7 @@ class QueryService:
             return "I couldn't find any approval work items for the dashboard right now."
 
         total = sum(bucket.count for bucket in buckets)
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        scope = f" ({', '.join(scope_bits)})" if scope_bits else ""
+        scope = self._format_scope(incident_code=incident_code, requester=requester, prefix="for")
         lines = [f"Approval dashboard{scope}: {total} total work item(s)."]
         if metrics:
             metrics_line = f"Pending: {metrics.pending_count}"
@@ -784,14 +779,12 @@ class QueryService:
         requester: str | None = None,
         min_pending_age_minutes: int | None = None,
     ) -> str:
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        if min_pending_age_minutes is not None:
-            scope_bits.append(f"min_age={min_pending_age_minutes}m")
-        scope = f" ({', '.join(scope_bits)})" if scope_bits else ""
+        scope = self._format_scope(
+            incident_code=incident_code,
+            requester=requester,
+            min_pending_age_minutes=min_pending_age_minutes,
+            prefix="for",
+        )
         lines = [
             f"Approval dashboard summary{scope}: {metrics.pending_count} pending item(s), "
             f"{metrics.approvals_created_last_24h} created in the last 24h, "
@@ -816,12 +809,7 @@ class QueryService:
         incident_code: str | None = None,
         requester: str | None = None,
     ) -> str:
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        scope = self._format_scope(incident_code=incident_code, requester=requester)
         if not metrics.pending_by_owner:
             return f"I couldn't find any pending approvals{scope} right now."
 
@@ -838,12 +826,7 @@ class QueryService:
         incident_code: str | None = None,
         requester: str | None = None,
     ) -> str:
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        scope = self._format_scope(incident_code=incident_code, requester=requester)
         if not metrics.oldest_pending_item:
             return f"I couldn't find an oldest pending approval item{scope} right now."
 
@@ -863,12 +846,7 @@ class QueryService:
         incident_code: str | None = None,
         requester: str | None = None,
     ) -> str:
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        scope = self._format_scope(incident_code=incident_code, requester=requester)
         if not metrics.oldest_pending_item:
             return f"I couldn't find a requester with the oldest pending approval{scope} right now."
 
@@ -888,12 +866,7 @@ class QueryService:
         incident_code: str | None = None,
         requester: str | None = None,
     ) -> str:
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        scope = self._format_scope(incident_code=incident_code, requester=requester)
         if not metrics.oldest_pending_item:
             return f"I couldn't find an incident with the oldest pending approval{scope} right now."
 
@@ -913,7 +886,7 @@ class QueryService:
         min_pending_age_minutes: int,
         requester: str | None = None,
     ) -> str:
-        scope = f" for requester={requester}" if requester else ""
+        scope = self._format_scope(requester=requester)
         if not incidents:
             return (
                 f"I couldn't find any incidents with pending approvals older than "
@@ -937,12 +910,7 @@ class QueryService:
         incident_code: str | None = None,
         requester: str | None = None,
     ) -> str:
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        scope = self._format_scope(incident_code=incident_code, requester=requester)
         if not metrics.pending_by_owner:
             return f"I couldn't find an approver bottleneck{scope} right now."
 
@@ -965,12 +933,7 @@ class QueryService:
         incident_code: str | None = None,
         requester: str | None = None,
     ) -> str:
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        scope = self._format_scope(incident_code=incident_code, requester=requester)
         if not metrics.pending_by_requester:
             return f"I couldn't find any requester-driven approval load{scope} right now."
 
@@ -994,12 +957,7 @@ class QueryService:
         incident_code: str | None = None,
         requester: str | None = None,
     ) -> str:
-        scope_bits: list[str] = []
-        if incident_code:
-            scope_bits.append(incident_code)
-        if requester:
-            scope_bits.append(f"requester={requester}")
-        scope = f" for {', '.join(scope_bits)}" if scope_bits else ""
+        scope = self._format_scope(incident_code=incident_code, requester=requester)
         if not metrics.pending_by_incident:
             return f"I couldn't find any pending approval pressure{scope} right now."
 
@@ -1033,6 +991,91 @@ class QueryService:
         if not params:
             return ""
         return "?" + urlencode(params)
+
+    def _format_scope(
+        self,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+        min_pending_age_minutes: int | None = None,
+        prefix: str = "for",
+    ) -> str:
+        scope_bits: list[str] = []
+        if incident_code:
+            scope_bits.append(incident_code)
+        if requester:
+            scope_bits.append(f"requester={requester}")
+        if min_pending_age_minutes is not None:
+            scope_bits.append(f"min_age={min_pending_age_minutes}m")
+        if not scope_bits:
+            return ""
+        return f" {prefix} {', '.join(scope_bits)}"
+
+    def _build_analytics_links(
+        self,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+        min_pending_age_minutes: int | None = None,
+    ) -> list[ApiLink]:
+        dashboard_query = self._build_query_string(
+            incident_code=incident_code,
+            requester=requester,
+        )
+        summary_query = self._build_query_string(
+            incident_code=incident_code,
+            requester=requester,
+            min_pending_age_minutes=min_pending_age_minutes,
+        )
+        return [
+            ApiLink(
+                rel="approval_dashboard",
+                href=f"/api/v1/approvals/dashboard{dashboard_query}",
+                method="GET",
+                description="Browse approval work grouped by status.",
+            ),
+            ApiLink(
+                rel="approval_dashboard_summary",
+                href=f"/api/v1/approvals/dashboard/summary{summary_query}",
+                method="GET",
+                description="View headline approval metrics and top risks first.",
+            ),
+            ApiLink(
+                rel="operator_dashboard",
+                href=f"/api/v1/operator/dashboard{summary_query}",
+                method="GET",
+                description="Open the operator-oriented dashboard view.",
+            ),
+            ApiLink(
+                rel="approval_list",
+                href=f"/api/v1/approvals{dashboard_query}",
+                method="GET",
+                description="Browse the full approval work queue.",
+            ),
+        ]
+
+    def _build_analytics_next_step(
+        self,
+        metrics: ApprovalDashboardMetrics,
+        *,
+        incident_code: str | None = None,
+        requester: str | None = None,
+        min_pending_age_minutes: int | None = None,
+    ) -> str:
+        scope = self._format_scope(
+            incident_code=incident_code,
+            requester=requester,
+            min_pending_age_minutes=min_pending_age_minutes,
+        )
+        if metrics.pending_count <= 0:
+            return f"Open the dashboard summary{scope} to confirm there are no active approval risks."
+        if metrics.oldest_pending_item:
+            item = metrics.oldest_pending_item
+            incident = f" for {item.incident_code}" if item.incident_code else ""
+            return (
+                f"Review approval {item.approval_id}{incident} next, since it is currently the oldest pending item."
+            )
+        return f"Open the operator dashboard{scope} to review the current pending approval workload."
 
     def _build_incident_approval_history_answer(
         self,
@@ -1410,35 +1453,11 @@ class QueryService:
             page_size_per_bucket=5,
         )
         total_count = sum(bucket.count for bucket in buckets)
-        dashboard_href = "/api/v1/approvals/dashboard" + self._build_query_string(
-            incident_code=incident_code_filter,
-            requester=requester_filter,
-        )
-        summary_href = "/api/v1/approvals/dashboard/summary" + self._build_query_string(
+        dashboard_links = self._build_analytics_links(
             incident_code=incident_code_filter,
             requester=requester_filter,
             min_pending_age_minutes=min_pending_age_minutes,
         )
-        dashboard_links = [
-            ApiLink(
-                rel="approval_dashboard",
-                href=dashboard_href,
-                method="GET",
-                description="Browse approval work grouped by status.",
-            ),
-            ApiLink(
-                rel="approval_list",
-                href=dashboard_href.replace("/approvals/dashboard", "/approvals"),
-                method="GET",
-                description="Browse the full approval work queue.",
-            ),
-            ApiLink(
-                rel="approval_dashboard_summary",
-                href=summary_href,
-                method="GET",
-                description="View headline approval metrics and top risks first.",
-            ),
-        ]
         if self._is_aged_pending_incident_lookup(request.message):
             aged_incidents = approval_service.list_incidents_with_pending_approvals_older_than(
                 min_pending_age_minutes=min_pending_age_minutes or 0,
@@ -1485,6 +1504,12 @@ class QueryService:
                 approval_dashboard_metrics=metrics,
                 approvals=[approval for bucket in buckets for approval in bucket.approvals],
                 links=dashboard_links,
+                recommended_next_step=self._build_analytics_next_step(
+                    metrics,
+                    incident_code=incident_code_filter,
+                    requester=requester_filter,
+                    min_pending_age_minutes=min_pending_age_minutes,
+                ),
             ),
             meta=QueryResponseMeta(
                 citations_included=False,

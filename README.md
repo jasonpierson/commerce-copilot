@@ -783,7 +783,7 @@ Important seeded incident examples:
 Representative seeded product:
 - `PX-100` / `Phantom X Shoes`
 
-## Known Constraints
+## Known Limitations / Next Steps
 
 - This is still a scaffold/prototype, not a production-hardened service
 - Database schema management is assumed rather than fully codified in this repo
@@ -791,6 +791,11 @@ Representative seeded product:
 - The app currently assumes trusted internal usage patterns and demo identities
 - Retrieval quality depends on environment tuning and corpus quality
 - Audit logging is best-effort in the scaffold
+- Next natural expansions:
+  - tighter analytics response formatting and richer operator views
+  - production auth and notification plumbing
+  - frontend/operator UI
+  - containerized deployment path
 
 ## Files Worth Reading First
 
