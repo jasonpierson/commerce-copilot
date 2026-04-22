@@ -310,6 +310,12 @@ class ApprovalDashboardSummaryData(BaseModel):
     min_pending_age_minutes: int | None = None
 
 
+class OperatorDashboardData(BaseModel):
+    summary: ApprovalDashboardSummaryData
+    approval_dashboard: ApprovalDashboardData
+    links: list[ApiLink] = Field(default_factory=list)
+
+
 class ApprovalRequestResponse(BaseModel):
     request_id: str
     status: Literal["success"] = "success"
@@ -363,4 +369,12 @@ class ApprovalDashboardSummaryResponse(BaseModel):
     status: Literal["success"] = "success"
     route_type: Literal["approval_dashboard_summary"] = "approval_dashboard_summary"
     data: ApprovalDashboardSummaryData
+    meta: QueryResponseMeta
+
+
+class OperatorDashboardResponse(BaseModel):
+    request_id: str
+    status: Literal["success"] = "success"
+    route_type: Literal["operator_dashboard"] = "operator_dashboard"
+    data: OperatorDashboardData
     meta: QueryResponseMeta

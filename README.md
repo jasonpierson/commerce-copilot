@@ -205,6 +205,7 @@ Show me only incidents with pending approvals older than 30 minutes.
 Useful operator endpoints:
 - `GET /api/v1/approvals/dashboard`
 - `GET /api/v1/approvals/dashboard/summary`
+- `GET /api/v1/operator/dashboard`
 
 ## Dashboard Metrics
 
@@ -233,6 +234,14 @@ Dashboard summary endpoint:
   - `incident_code`
   - `requester`
   - `min_pending_age_minutes`
+
+Operator dashboard endpoint for future UI work:
+- `GET /api/v1/operator/dashboard`
+- returns:
+  - headline summary text
+  - top risks first
+  - grouped approval buckets
+  - links to the approval dashboard APIs
 
 ## Local Setup
 

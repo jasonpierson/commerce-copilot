@@ -1150,10 +1150,38 @@ class ApiWorkflowTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["route_type"], "approval_dashboard_summary")
         self.assertIn("Approval summary:", payload["data"]["answer"])
+        self.assertIn("Top risks:", payload["data"]["answer"])
         self.assertEqual(payload["data"]["headline_metrics"]["pending_count"], 1)
         self.assertGreaterEqual(len(payload["data"]["top_risks"]), 1)
         self.assertEqual(payload["data"]["min_pending_age_minutes"], 15)
         self.assertEqual(payload["meta"]["tools_used"], ["get_approval_dashboard_summary"])
+
+    def test_operator_dashboard_endpoint_returns_summary_and_bucket_shape(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=ACTIVE_INCIDENT.incident_id,
+            incident_code=ACTIVE_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="critical",
+            draft_summary="Escalate to management due to payment failures.",
+            request_id="req_test_operator_dashboard",
+        )
+
+        with patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.get("/api/v1/operator/dashboard?min_pending_age_minutes=15")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "operator_dashboard")
+        self.assertIn("Approval summary:", payload["data"]["summary"]["answer"])
+        self.assertEqual(payload["data"]["approval_dashboard"]["metrics"]["pending_count"], 1)
+        self.assertEqual(payload["data"]["approval_dashboard"]["total_count"], 1)
+        self.assertEqual(payload["meta"]["tools_used"], ["get_approval_dashboard", "get_approval_dashboard_summary"])
 
     def test_query_approval_list_returns_pending_items(self) -> None:
         fake_approval_service = FakeApprovalService()

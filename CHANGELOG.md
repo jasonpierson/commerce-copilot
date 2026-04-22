@@ -32,6 +32,7 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - Dedicated `SECURITY.md` deployment-hardening checklist for auth, rate limits, CORS, logging, and secret handling
 - A compact operator analytics section in `README.md` with example approval-ops prompts
 - `GET /api/v1/approvals/dashboard/summary` for headline metrics plus top risks first
+- `GET /api/v1/operator/dashboard` as a UI-oriented operator dashboard shape
 
 ### Changed
 - `/api/v1/query` dashboard responses now return grouped dashboard buckets plus structured dashboard metrics
@@ -40,6 +41,7 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - Dashboard-style `/api/v1/query` answers now render 7-day trend buckets as a clearer line-by-line summary
 - `README.md` now links to `SECURITY.md` near the top for easier visibility
 - Approval analytics now expose requester context on oldest-pending approval items
+- Dashboard summary answers now surface top-risk headlines directly in the returned summary text
 
 ## 2026-04-20 — `76ccb5d` — Expand approval browsing and dashboard APIs
 

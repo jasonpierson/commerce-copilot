@@ -30,6 +30,9 @@ from app.api.schemas import (
     CreateEscalationRequest,
     ErrorDetail,
     ErrorResponse,
+    ApiLink,
+    OperatorDashboardData,
+    OperatorDashboardResponse,
     QueryResponseMeta,
 )
 
@@ -249,6 +252,10 @@ def get_approval_dashboard_summary(
             f"{metrics.approvals_created_last_24h} created in the last 24h; "
             f"{metrics.approvals_decided_last_24h} decided in the last 24h."
         )
+        if top_risks:
+            answer += " Top risks: " + "; ".join(
+                f"{risk.title}: {risk.detail}" for risk in top_risks[:3]
+            )
         return ApprovalDashboardSummaryResponse(
             request_id=request_id,
             data=ApprovalDashboardSummaryData(
@@ -271,6 +278,94 @@ def get_approval_dashboard_summary(
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="APPROVAL_DASHBOARD_SUMMARY_FAILED",
             message="The backend could not load the approval dashboard summary.",
+            details={"cause": type(exc).__name__},
+        )
+
+
+@router.get(
+    "/operator/dashboard",
+    response_model=OperatorDashboardResponse,
+    responses={
+        502: {"model": ErrorResponse},
+    },
+)
+def get_operator_dashboard(
+    incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
+    requester: str | None = Query(default=None),
+    min_pending_age_minutes: int | None = Query(default=None, ge=0, le=100000),
+    page_size_per_bucket: int = Query(default=5, ge=1, le=25),
+) -> OperatorDashboardResponse | JSONResponse:
+    request_id = f"req_{uuid4().hex[:12]}"
+    try:
+        service = ApprovalService.from_env()
+        buckets, metrics = service.get_approval_dashboard(
+            incident_code=incident_code,
+            requester=requester,
+            page_size_per_bucket=page_size_per_bucket,
+        )
+        top_risks = service.get_approval_dashboard_summary(
+            incident_code=incident_code,
+            requester=requester,
+            min_pending_age_minutes=min_pending_age_minutes,
+        )[1]
+        answer = (
+            f"Approval summary: {metrics.pending_count} pending item(s); "
+            f"{metrics.approvals_created_last_24h} created in the last 24h; "
+            f"{metrics.approvals_decided_last_24h} decided in the last 24h."
+        )
+        if top_risks:
+            answer += " Top risks: " + "; ".join(
+                f"{risk.title}: {risk.detail}" for risk in top_risks[:3]
+            )
+        summary_data = ApprovalDashboardSummaryData(
+            answer=answer,
+            headline_metrics=metrics,
+            top_risks=top_risks,
+            incident_code_filter=incident_code,
+            requester_filter=requester,
+            min_pending_age_minutes=min_pending_age_minutes,
+        )
+        dashboard_data = ApprovalDashboardData(
+            buckets=buckets,
+            total_count=sum(bucket.count for bucket in buckets),
+            page_size_per_bucket=page_size_per_bucket,
+            metrics=metrics,
+            incident_code_filter=incident_code,
+            requester_filter=requester,
+        )
+        links = [
+            ApiLink(
+                rel="approval_dashboard",
+                href="/api/v1/approvals/dashboard",
+                method="GET",
+                description="Browse grouped approval buckets.",
+            ),
+            ApiLink(
+                rel="approval_dashboard_summary",
+                href="/api/v1/approvals/dashboard/summary",
+                method="GET",
+                description="View headline approval metrics and top risks.",
+            ),
+        ]
+        return OperatorDashboardResponse(
+            request_id=request_id,
+            data=OperatorDashboardData(
+                summary=summary_data,
+                approval_dashboard=dashboard_data,
+                links=links,
+            ),
+            meta=QueryResponseMeta(
+                citations_included=False,
+                tools_used=["get_approval_dashboard", "get_approval_dashboard_summary"],
+                approval_involved=metrics.pending_count > 0,
+            ),
+        )
+    except Exception as exc:
+        return _error_response(
+            request_id=request_id,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="OPERATOR_DASHBOARD_FAILED",
+            message="The backend could not load the operator dashboard.",
             details={"cause": type(exc).__name__},
         )
 
