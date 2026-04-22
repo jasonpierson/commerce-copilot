@@ -5,7 +5,7 @@
     "tool_only_cases": 3,
     "top_1_hit_rate": 1.0,
     "top_3_hit_rate": 1.0,
-    "section_match_top_3_rate": 0.6667,
+    "section_match_top_3_rate": 0.8667,
     "retrieval_boundary_correct_rate": 1.0,
     "unexpected_noise_top_3_rate": 0.0
   },
@@ -16,11 +16,11 @@
       "query": "What is the return process for damaged products?",
       "should_use_retrieval": true,
       "result_count": 5,
-      "top_result_doc_key": "sop_damaged_product_handling_001",
+      "top_result_doc_key": "policy_returns_001",
       "top_3_doc_keys": [
+        "policy_returns_001",
         "sop_damaged_product_handling_001",
-        "sop_damaged_product_handling_001",
-        "policy_returns_001"
+        "sop_damaged_product_handling_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -38,8 +38,8 @@
       "top_result_doc_key": "sop_damaged_product_handling_001",
       "top_3_doc_keys": [
         "sop_damaged_product_handling_001",
-        "sop_damaged_product_handling_001",
-        "policy_returns_001"
+        "policy_returns_001",
+        "sop_damaged_product_handling_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -57,8 +57,8 @@
       "top_result_doc_key": "policy_product_availability_001",
       "top_3_doc_keys": [
         "policy_product_availability_001",
-        "policy_product_availability_001",
-        "sop_inventory_availability_001"
+        "sop_inventory_availability_001",
+        "policy_product_availability_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -76,12 +76,12 @@
       "top_result_doc_key": "sop_inventory_availability_001",
       "top_3_doc_keys": [
         "sop_inventory_availability_001",
-        "policy_product_availability_001",
-        "sop_inventory_availability_001"
+        "sop_inventory_availability_001",
+        "policy_product_availability_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
-      "section_match_top_3": false,
+      "section_match_top_3": true,
       "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Either doc may rank first, but both should be near the top."
@@ -95,8 +95,8 @@
       "top_result_doc_key": "policy_returns_001",
       "top_3_doc_keys": [
         "policy_returns_001",
-        "sop_damaged_product_handling_001",
-        "policy_returns_001"
+        "policy_returns_001",
+        "sop_damaged_product_handling_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -152,8 +152,8 @@
       "top_result_doc_key": "runbook_checkout_incident_001",
       "top_3_doc_keys": [
         "runbook_checkout_incident_001",
-        "incident_playbook_mobile_checkout_001",
-        "runbook_checkout_incident_001"
+        "runbook_checkout_incident_001",
+        "incident_playbook_mobile_checkout_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -172,7 +172,7 @@
       "top_3_doc_keys": [
         "runbook_customer_impact_assessment_001",
         "runbook_customer_impact_assessment_001",
-        "incident_playbook_mobile_checkout_001"
+        "runbook_checkout_incident_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -190,8 +190,8 @@
       "top_result_doc_key": "incident_playbook_mobile_checkout_001",
       "top_3_doc_keys": [
         "incident_playbook_mobile_checkout_001",
-        "runbook_checkout_incident_001",
-        "incident_playbook_mobile_checkout_001"
+        "incident_playbook_mobile_checkout_001",
+        "runbook_checkout_incident_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -209,8 +209,8 @@
       "top_result_doc_key": "runbook_checkout_incident_001",
       "top_3_doc_keys": [
         "runbook_checkout_incident_001",
-        "incident_playbook_mobile_checkout_001",
-        "runbook_checkout_incident_001"
+        "runbook_checkout_incident_001",
+        "incident_playbook_mobile_checkout_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -247,12 +247,12 @@
       "top_result_doc_key": "matrix_priority_escalation_001",
       "top_3_doc_keys": [
         "matrix_priority_escalation_001",
-        "escalation_procedure_incident_escalation_001",
-        "matrix_priority_escalation_001"
+        "matrix_priority_escalation_001",
+        "escalation_procedure_incident_escalation_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
-      "section_match_top_3": false,
+      "section_match_top_3": true,
       "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Should be a very clean match."
@@ -266,8 +266,8 @@
       "top_result_doc_key": "escalation_procedure_incident_escalation_001",
       "top_3_doc_keys": [
         "escalation_procedure_incident_escalation_001",
-        "matrix_priority_escalation_001",
-        "escalation_procedure_incident_escalation_001"
+        "escalation_procedure_incident_escalation_001",
+        "matrix_priority_escalation_001"
       ],
       "top_1_hit": true,
       "top_3_hit": true,
@@ -290,7 +290,7 @@
       ],
       "top_1_hit": true,
       "top_3_hit": true,
-      "section_match_top_3": false,
+      "section_match_top_3": true,
       "unexpected_noise_top_3": false,
       "used_retrieval_correctly": true,
       "notes": "Good boundary-case test for adjacent guidance sections."

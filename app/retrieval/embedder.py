@@ -6,8 +6,8 @@ from typing import Sequence
 
 class DummyEmbedder:
     """
-    Deterministic offline embedder for scaffolding and tests.
-    Produces a small vector from a text hash. Replace with a real embedder in production.
+    Deterministic offline embedder for smoke tests only.
+    Live ingestion and retrieval runtime paths use OpenAI embeddings.
     """
 
     def __init__(self, dimensions: int = 1536) -> None:

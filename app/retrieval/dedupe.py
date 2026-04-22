@@ -39,21 +39,3 @@ def dedupe_results(
         output.append(row)
 
     return output
-
-
-def enforce_top_n_doc_diversity(rows: list[RetrievalRow], n: int = 3) -> list[RetrievalRow]:
-    if n <= 0 or not rows:
-        return rows
-
-    top_unique: list[RetrievalRow] = []
-    seen: set[str] = set()
-    rest: list[RetrievalRow] = []
-
-    for row in rows:
-        if len(top_unique) < n and row.doc_key not in seen:
-            top_unique.append(row)
-            seen.add(row.doc_key)
-        else:
-            rest.append(row)
-
-    return top_unique + rest

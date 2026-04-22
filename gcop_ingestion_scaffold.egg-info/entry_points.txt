@@ -1,2 +1,0 @@
-[console_scripts]
-gcop-ingest = app.ingestion.runner:main

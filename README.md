@@ -102,6 +102,10 @@ Primary files:
 - `app/retrieval/evals/evaluator.py`
 - `scripts/run_retrieval_eval.py`
 
+Canonical evaluator path:
+- `app/retrieval/evals/evaluator.py`
+- `scripts/run_retrieval_eval.py`
+
 ### 2. Structured Operational Data
 The API uses structured tables for live answers where retrieval alone is not enough.
 
@@ -271,6 +275,12 @@ EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_DIMENSIONS=1536
 ```
 
+Notes:
+- ingestion and retrieval both use the same real embedding config
+- default embedding model is `text-embedding-3-small`
+- default embedding dimension is `1536`
+- `EMBEDDING_PROVIDER` must stay `openai` for ingestion and live retrieval
+
 Retrieval tuning is env-driven as well; the retrieval config reads several runtime knobs from environment variables.
 
 ## Common Workflows
@@ -290,8 +300,10 @@ source .venv/bin/activate
 set -a
 source .env.local
 set +a
-python scripts/run_ingestion.py
+python -m app.ingestion.runner --corpus-root ./corpus
 ```
+
+Re-ingest after changing embedding configuration or rebuilding the retrieval baseline so stored chunk vectors and live query vectors stay aligned.
 
 ### Run Retrieval Eval
 ```bash
@@ -301,6 +313,29 @@ source .env.local
 set +a
 python scripts/run_retrieval_eval.py --mode adapter
 ```
+
+## Retrieval Quality
+
+Current canonical baseline:
+- `top_1_hit_rate`: `1.0`
+- `top_3_hit_rate`: `1.0`
+- `section_match_top_3_rate`: `0.8667`
+- `retrieval_boundary_correct_rate`: `1.0`
+- `unexpected_noise_top_3_rate`: `0.0`
+
+How to rebuild the baseline:
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python -m app.ingestion.runner --corpus-root ./corpus
+python3 scripts/run_retrieval_eval.py --mode adapter
+```
+
+Reference:
+- `docs/retrieval-updates.md`
+- `retrieval_eval_report.json`
 
 ### Seed Demo Operational Data
 ```bash

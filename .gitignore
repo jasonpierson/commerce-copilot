@@ -1,6 +1,9 @@
 .vscode/
+.venv/
 __pycache__/
 *.pyc
+*.egg-info/
+artifacts/
 .env.local
 ai-handoff.md
 ChatGPT-Development.md

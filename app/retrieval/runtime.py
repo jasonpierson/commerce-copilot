@@ -7,7 +7,6 @@ from app.common.config import EmbeddingConfig
 from app.common.embeddings import OpenAIEmbedder
 from .audit import AuditSink
 from .config import RetrievalConfig
-from .embedder import DummyEmbedder
 from .repository import PostgresRetrievalRepository
 from .service import RetrievalService
 
@@ -20,11 +19,12 @@ def _require_env(name: str) -> str:
 
 
 def _build_query_embedder(config: EmbeddingConfig):
-    if config.provider == "openai":
-        return OpenAIEmbedder.from_config(config)
-    if config.provider == "dummy":
-        return DummyEmbedder(dimensions=config.dimensions)
-    raise RuntimeError(f"Unsupported embedding provider: {config.provider}")
+    if config.provider != "openai":
+        raise RuntimeError(
+            "Retrieval runtime requires EMBEDDING_PROVIDER=openai. "
+            "Dummy embeddings are supported only in smoke-test-only paths."
+        )
+    return OpenAIEmbedder.from_config(config)
 
 
 @lru_cache(maxsize=1)
