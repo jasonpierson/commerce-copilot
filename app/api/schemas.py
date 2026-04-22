@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 SupportedRouteType = Literal[
@@ -31,6 +31,18 @@ class QueryRequest(BaseModel):
     user_role: SupportedUserRole = Field(default="support_analyst")
     top_k: int = Field(default=5, ge=1, le=10)
     route_type_override: SupportedRouteType | None = Field(default=None)
+    model_config = ConfigDict(json_schema_extra={
+        "examples": [
+            {
+                "message": "Check inventory for the Phantom X shoes.",
+                "user_role": "support_analyst",
+            },
+            {
+                "message": "Summarize incident INC-1091 and tell me the likely customer impact.",
+                "user_role": "engineering_support",
+            },
+        ]
+    })
 
 
 class Citation(BaseModel):
@@ -163,6 +175,18 @@ class CreateEscalationRequest(BaseModel):
     draft_summary: str = Field(min_length=1)
     requested_by_user_id: str = Field(default="demo-support-001")
     requested_by_role: SupportedUserRole = Field(default="support_analyst")
+    model_config = ConfigDict(json_schema_extra={
+        "examples": [
+            {
+                "incident_code": "INC-1091",
+                "escalation_reason": "Customer impact remains elevated.",
+                "proposed_priority": "critical",
+                "draft_summary": "Escalate to management due to ongoing checkout failures.",
+                "requested_by_user_id": "demo-support-001",
+                "requested_by_role": "support_analyst",
+            }
+        ]
+    })
 
 
 class ApprovalDecisionRequest(BaseModel):
@@ -170,6 +194,16 @@ class ApprovalDecisionRequest(BaseModel):
     decision_notes: str | None = None
     decider_user_id: str = Field(default="demo-ops-manager-001")
     decider_role: SupportedUserRole = Field(default="ops_manager")
+    model_config = ConfigDict(json_schema_extra={
+        "examples": [
+            {
+                "decision": "approved",
+                "decision_notes": "Approved for incident coordination.",
+                "decider_user_id": "demo-ops-manager-001",
+                "decider_role": "ops_manager",
+            }
+        ]
+    })
 
 
 class ApprovalRecord(BaseModel):

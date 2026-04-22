@@ -798,6 +798,112 @@ class ApiWorkflowTests(TestCase):
         self.assertEqual(len(payload["data"]["audit_events"]), 1)
         self.assertEqual(payload["data"]["audit_events"][0]["event_type"], "approval_decided")
 
+    def test_approval_decision_forbidden_for_non_approver(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_forbidden_decision",
+        )
+
+        with patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/approvals/apr_test_001/decision",
+                headers={"X-User-Id": "demo-support-001", "X-User-Role": "support_analyst"},
+                json={
+                    "decision": "approved",
+                    "decision_notes": "Testing forbidden path.",
+                },
+            )
+
+        self.assertEqual(response.status_code, 403)
+        payload = response.json()
+        self.assertEqual(payload["status"], "error")
+        self.assertEqual(payload["error"]["code"], "APPROVAL_PERMISSION_DENIED")
+
+    def test_query_approver_bottleneck_analytics(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        # Seed two pending approvals assigned to the same approver to create a clear bottleneck
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_bottleneck_1",
+        )
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=ACTIVE_INCIDENT.incident_id,
+            incident_code=ACTIVE_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Still impacted.",
+            proposed_priority="critical",
+            draft_summary="Escalate to management due to ongoing payment timeouts.",
+            request_id="req_test_bottleneck_2",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Which approver is the bottleneck?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("bottleneck", payload["data"]["answer"].lower())
+        self.assertIn("Dana Lee", payload["data"]["answer"])  # current fake approver
+        self.assertEqual(payload["meta"]["tools_used"], ["get_approval_dashboard"])
+
+    def test_query_pending_owner_summary(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        fake_approval_service.create_incident_escalation_request(
+            incident_id=SEEDED_INCIDENT.incident_id,
+            incident_code=SEEDED_INCIDENT.incident_code,
+            requested_by_user_id="demo-support-001",
+            requested_by_role="support_analyst",
+            escalation_reason="Customer impact is growing.",
+            proposed_priority="high",
+            draft_summary="Escalate to management due to sustained checkout issues.",
+            request_id="req_test_pending_owner",
+        )
+
+        with patch(
+            "app.api.query_service.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.post(
+                "/api/v1/query",
+                json={
+                    "message": "Who is holding the pending approvals?",
+                    "user_role": "support_analyst",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["route_type"], "structured_lookup")
+        self.assertIn("pending approvals", payload["data"]["answer"].lower())
+        self.assertIn("Dana Lee", payload["data"]["answer"])  # current fake approver name appears
+        self.assertEqual(payload["meta"]["tools_used"], ["get_approval_dashboard"])
+
     def test_query_incident_summary_includes_linked_approval_state(self) -> None:
         retrieval_results = [
             RetrievalResult(

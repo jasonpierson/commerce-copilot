@@ -1,0 +1,76 @@
+. .venv/bin/activate && python -m unittest discover -s tests -p 'test_*.py' -v
+test_approval_audit_endpoint_filters_by_event_type (test_api.ApiWorkflowTests.test_approval_audit_endpoint_filters_by_event_type) ... ok
+test_approval_audit_endpoint_returns_history (test_api.ApiWorkflowTests.test_approval_audit_endpoint_returns_history) ... ok
+test_approval_dashboard_endpoint_groups_by_status (test_api.ApiWorkflowTests.test_approval_dashboard_endpoint_groups_by_status) ... ok
+test_approval_dashboard_endpoint_supports_filters (test_api.ApiWorkflowTests.test_approval_dashboard_endpoint_supports_filters) ... ok
+test_approval_dashboard_summary_endpoint_returns_headlines_and_top_risks (test_api.ApiWorkflowTests.test_approval_dashboard_summary_endpoint_returns_headlines_and_top_risks) ... ok
+test_approval_decision_forbidden_for_non_approver (test_api.ApiWorkflowTests.test_approval_decision_forbidden_for_non_approver) ... ok
+test_approval_list_endpoint_filters_pending_items (test_api.ApiWorkflowTests.test_approval_list_endpoint_filters_pending_items) ... ok
+test_approval_list_endpoint_supports_incident_filter_pagination_and_sorting (test_api.ApiWorkflowTests.test_approval_list_endpoint_supports_incident_filter_pagination_and_sorting) ... ok
+test_escalation_decision_rejects_duplicate_decision (test_api.ApiWorkflowTests.test_escalation_decision_rejects_duplicate_decision) ... ok
+test_escalation_decision_rejects_non_approver_role (test_api.ApiWorkflowTests.test_escalation_decision_rejects_non_approver_role) ... ok
+test_escalation_decision_uses_mock_auth_headers_over_body_role (test_api.ApiWorkflowTests.test_escalation_decision_uses_mock_auth_headers_over_body_role) ... ok
+test_escalation_flow_create_get_and_decide (test_api.ApiWorkflowTests.test_escalation_flow_create_get_and_decide) ... ok
+test_incident_detail_endpoint_returns_incident_and_timeline (test_api.ApiWorkflowTests.test_incident_detail_endpoint_returns_incident_and_timeline) ... ok
+test_operator_dashboard_endpoint_returns_summary_and_bucket_shape (test_api.ApiWorkflowTests.test_operator_dashboard_endpoint_returns_summary_and_bucket_shape) ... ok
+test_query_aged_pending_incidents_lookup_filters_by_minutes (test_api.ApiWorkflowTests.test_query_aged_pending_incidents_lookup_filters_by_minutes) ... ok
+test_query_approval_actor_lookup_returns_natural_decision_summary (test_api.ApiWorkflowTests.test_query_approval_actor_lookup_returns_natural_decision_summary) ... ok
+test_query_approval_dashboard_returns_grouped_status_summary (test_api.ApiWorkflowTests.test_query_approval_dashboard_returns_grouped_status_summary) ... ok
+test_query_approval_history_returns_audit_timestamps (test_api.ApiWorkflowTests.test_query_approval_history_returns_audit_timestamps) ... ok
+test_query_approval_list_filters_rejected_items_for_incident (test_api.ApiWorkflowTests.test_query_approval_list_filters_rejected_items_for_incident) ... ok
+test_query_approval_list_returns_pending_items (test_api.ApiWorkflowTests.test_query_approval_list_returns_pending_items) ... ok
+test_query_approval_rejection_reason_uses_audit_notes (test_api.ApiWorkflowTests.test_query_approval_rejection_reason_uses_audit_notes) ... ok
+test_query_approval_status_returns_structured_approval_record (test_api.ApiWorkflowTests.test_query_approval_status_returns_structured_approval_record) ... ok
+test_query_approval_status_without_id_returns_guidance (test_api.ApiWorkflowTests.test_query_approval_status_without_id_returns_guidance) ... ok
+test_query_approver_bottleneck_analytics (test_api.ApiWorkflowTests.test_query_approver_bottleneck_analytics) ... ok
+test_query_approver_bottleneck_lookup_returns_top_approver (test_api.ApiWorkflowTests.test_query_approver_bottleneck_lookup_returns_top_approver) ... ok
+test_query_escalation_guidance_blends_policy_and_active_incident_context (test_api.ApiWorkflowTests.test_query_escalation_guidance_blends_policy_and_active_incident_context) ... ok
+test_query_escalation_load_lookup_returns_top_incidents (test_api.ApiWorkflowTests.test_query_escalation_load_lookup_returns_top_incidents) ... ok
+test_query_incident_summary_answers_escalation_status_question (test_api.ApiWorkflowTests.test_query_incident_summary_answers_escalation_status_question) ... ok
+test_query_incident_summary_blends_structured_and_retrieval_context (test_api.ApiWorkflowTests.test_query_incident_summary_blends_structured_and_retrieval_context) ... ok
+test_query_incident_summary_exposes_approval_suggestion_for_active_incident (test_api.ApiWorkflowTests.test_query_incident_summary_exposes_approval_suggestion_for_active_incident) ... ok
+test_query_incident_summary_includes_linked_approval_state (test_api.ApiWorkflowTests.test_query_incident_summary_includes_linked_approval_state) ... ok
+test_query_incident_summary_returns_linked_approval_history (test_api.ApiWorkflowTests.test_query_incident_summary_returns_linked_approval_history) ... ok
+test_query_inventory_returns_seeded_inventory_shape (test_api.ApiWorkflowTests.test_query_inventory_returns_seeded_inventory_shape) ... ok
+test_query_logging_persists_request_trace (test_api.ApiWorkflowTests.test_query_logging_persists_request_trace) ... ok
+test_query_oldest_pending_incident_lookup_returns_incident_summary (test_api.ApiWorkflowTests.test_query_oldest_pending_incident_lookup_returns_incident_summary) ... ok
+test_query_oldest_pending_item_lookup_returns_oldest_pending_approver (test_api.ApiWorkflowTests.test_query_oldest_pending_item_lookup_returns_oldest_pending_approver) ... ok
+test_query_oldest_pending_requester_lookup_returns_requester_summary (test_api.ApiWorkflowTests.test_query_oldest_pending_requester_lookup_returns_requester_summary) ... ok
+test_query_pending_owner_lookup_returns_current_approvers (test_api.ApiWorkflowTests.test_query_pending_owner_lookup_returns_current_approvers) ... ok
+test_query_pending_owner_summary (test_api.ApiWorkflowTests.test_query_pending_owner_summary) ... ok
+test_query_requester_load_lookup_returns_top_requester (test_api.ApiWorkflowTests.test_query_requester_load_lookup_returns_top_requester) ... ok
+test_end_to_end_demo_flow (test_demo_flow.GoldenPathDemoTests.test_end_to_end_demo_flow) ... FAIL
+test_classify_route_approval_dashboard (test_query_routing.QueryRoutingTests.test_classify_route_approval_dashboard) ... ok
+test_classify_route_approval_list_browse (test_query_routing.QueryRoutingTests.test_classify_route_approval_list_browse) ... ok
+test_classify_route_escalation_guidance (test_query_routing.QueryRoutingTests.test_classify_route_escalation_guidance) ... ok
+test_classify_route_escalation_pressure_lookup (test_query_routing.QueryRoutingTests.test_classify_route_escalation_pressure_lookup) ... ok
+test_classify_route_incident_summary (test_query_routing.QueryRoutingTests.test_classify_route_incident_summary) ... ok
+test_classify_route_inventory_lookup (test_query_routing.QueryRoutingTests.test_classify_route_inventory_lookup) ... ok
+test_classify_route_override_wins (test_query_routing.QueryRoutingTests.test_classify_route_override_wins) ... ok
+test_classify_route_pending_owner_lookup (test_query_routing.QueryRoutingTests.test_classify_route_pending_owner_lookup) ... ok
+test_classify_route_policy_qa (test_query_routing.QueryRoutingTests.test_classify_route_policy_qa) ... ok
+test_classify_route_requester_load_lookup (test_query_routing.QueryRoutingTests.test_classify_route_requester_load_lookup) ... ok
+test_extract_incident_code_returns_none_when_missing (test_query_service.QueryServiceExtractionTests.test_extract_incident_code_returns_none_when_missing) ... ok
+test_extract_incident_code_returns_uppercase_code (test_query_service.QueryServiceExtractionTests.test_extract_incident_code_returns_uppercase_code) ... ok
+test_extract_inventory_query_handles_stock_level_variant (test_query_service.QueryServiceExtractionTests.test_extract_inventory_query_handles_stock_level_variant) ... ok
+test_extract_inventory_query_removes_article_and_punctuation (test_query_service.QueryServiceExtractionTests.test_extract_inventory_query_removes_article_and_punctuation) ... ok
+test_dedupe_results_keeps_one_chunk_per_normalized_section (test_retrieval.RetrievalDedupeTests.test_dedupe_results_keeps_one_chunk_per_normalized_section) ... ok
+test_dedupe_results_respects_max_chunks_per_doc_without_hard_top_three_diversity (test_retrieval.RetrievalDedupeTests.test_dedupe_results_respects_max_chunks_per_doc_without_hard_top_three_diversity) ... ok
+test_normalize_section_title_collapses_formatting_noise (test_retrieval.RetrievalEvaluatorNormalizationTests.test_normalize_section_title_collapses_formatting_noise) ... ok
+
+======================================================================
+FAIL: test_end_to_end_demo_flow (test_demo_flow.GoldenPathDemoTests.test_end_to_end_demo_flow)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py", line 1439, in patched
+    return func(*newargs, **newkeywargs)
+  File "/Users/jasonpierson/Projects/CommerceOpsCopilot/tests/test_demo_flow.py", line 160, in test_end_to_end_demo_flow
+    self.assertEqual(r.status_code, 200)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+AssertionError: 502 != 200
+
+----------------------------------------------------------------------
+Ran 58 tests in 0.127s
+
+FAILED (failures=1)
+make: *** [test] Error 1

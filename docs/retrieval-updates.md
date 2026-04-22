@@ -32,7 +32,7 @@ python3 scripts/run_retrieval_eval.py --mode adapter
 
 ## Baseline Metrics
 
-From `retrieval_eval_report.json` after real ingestion and live adapter evaluation:
+From `artifacts/retrieval_eval_report.json` after real ingestion and live adapter evaluation:
 
 - `top_1_hit_rate`: `1.0`
 - `top_3_hit_rate`: `1.0`
@@ -94,4 +94,4 @@ python3 scripts/run_retrieval_eval.py --mode adapter
 
 ## Artifact
 
-- Report: `retrieval_eval_report.json`
+- Report: `artifacts/retrieval_eval_report.json`

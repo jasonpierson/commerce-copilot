@@ -25,6 +25,18 @@ In a second shell:
 make demo
 ```
 
+Optional demo UI (Streamlit):
+
+```bash
+make ui
+```
+
+Then open the Streamlit URL (typically http://localhost:8501) and try:
+- policy/process Q&A
+- inventory lookup
+- incident summary
+- approval request/status/decision
+
 What the demo shows:
 - policy/process Q&A with citations
 - inventory lookup against structured data
@@ -141,6 +153,8 @@ scripts/
   run_retrieval_smoke_test.py
   seed_domain_data.py      Seeds demo users/catalog/incidents
   cleanup_demo_data.py     Cleans demo data or approval-only artifacts
+ui/
+  app.py                   Minimal Streamlit UI for demoing the API
 ```
 
 ## Fast Local Run Path
@@ -158,6 +172,7 @@ Useful commands:
 - `make eval`
 - `make smoke`
 - `make demo`
+- `make ui`
 - `make clean-approvals`
 - `make clean-full`
 
@@ -226,7 +241,7 @@ Shared response shape:
 - `GET /health`
 
 ### Unified Query
-- `POST /api/v1/query`
+- `POST /api/v1/query` — see interactive docs at `/docs`
 
 ### Incident Endpoints
 - `GET /api/v1/incidents/{incident_code}`
@@ -465,6 +480,19 @@ python -m pip install -U pip
 python -m pip install -e .
 ```
 
+### Optional: Docker-based startup
+
+```bash
+docker build -t commerce-ops-copilot .
+docker run --rm -p 8000:8000 --env-file .env.local commerce-ops-copilot
+```
+
+Or with compose:
+
+```bash
+docker compose up --build
+```
+
 ### Environment
 Create `.env.local` in the repo root and keep it out of git.
 
@@ -555,7 +583,7 @@ python3 scripts/run_retrieval_eval.py --mode adapter
 
 Reference:
 - `docs/retrieval-updates.md`
-- `retrieval_eval_report.json`
+- `artifacts/retrieval_eval_report.json`
 
 ### Seed Demo Operational Data
 ```bash
@@ -669,6 +697,14 @@ Quick trace flow:
 ```bash
 rg "req_" artifacts/*.jsonl
 rg "<request_id>" artifacts/*.jsonl
+```
+
+Or use the helper script:
+
+```bash
+python scripts/inspect_logs.py --tail 50
+python scripts/inspect_logs.py --request-id <req_id>
+python scripts/inspect_logs.py --approval-id <apr_id>
 ```
 
 ## Future Public Deployment Security Notes
@@ -819,6 +855,23 @@ Representative seeded product:
   - production auth and notification plumbing
   - frontend/operator UI
   - containerized deployment path
+
+## What Is Intentionally Demo-Only
+
+- Mock auth via `X-User-Id` and `X-User-Role` instead of a real IdP
+- No frontend session management or CSRF/session protection
+- Approval notifications/workflow orchestration are stubs
+- Basic rate-limiting and abuse controls are not enabled
+- Minimal UI (Streamlit) meant only for quick demos
+
+## What Would Change For Production
+
+- Require auth on all non-health endpoints (API keys/OAuth/JWT)
+- Enforce per-principal rate limits and abuse detection at a gateway
+- Stronger authorization policies; optionally RLS for mixed-sensitivity data
+- Managed secret storage; zero secrets in env files on hosts
+- Production log handling with redaction, retention, and alerting
+- Deployment packaging (Docker/infra as code) with CI/CD and rollout controls
 
 ## Files Worth Reading First
 

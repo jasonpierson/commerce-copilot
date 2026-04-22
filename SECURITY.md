@@ -85,3 +85,13 @@ python -m scripts.cleanup_demo_data --scope approvals --apply
 ## Security Reporting
 
 If this project is deployed publicly in the future, add a dedicated reporting contact and response policy here.
+
+## Demo-Only vs Production
+
+This repository uses mock/demo auth headers and a backend-only exposure model during development. Before any public deployment:
+
+- Replace mock headers with a real identity provider and token validation
+- Add per-user/token rate limits on `/api/v1/query` and approval endpoints
+- Enforce least-privilege authorization tied to real identities
+- Move secrets to a managed store and rotate any demo keys
+- Harden CORS and network ACLs; disable verbose errors in production

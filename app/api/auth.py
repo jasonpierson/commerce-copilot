@@ -22,3 +22,11 @@ def resolve_demo_principal(
         user_id=(header_user_id or fallback_user_id).strip(),
         user_role=header_user_role or fallback_user_role,
     )
+
+
+def can_decide_approvals(role: SupportedUserRole) -> bool:
+    """Return True if the role is allowed to decide approvals.
+
+    Centralized to keep permission boundaries obvious in one place.
+    """
+    return role in {"ops_manager", "admin"}

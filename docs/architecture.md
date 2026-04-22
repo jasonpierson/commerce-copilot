@@ -67,3 +67,10 @@ User / Support Agent
 - structured services show operational realism
 - approval workflows show governed action, not just chatbot output
 - persistent request tracing makes the system inspectable after the demo ends
+
+## Demo-Only vs Production
+
+- Demo uses mock headers for auth; production should validate tokens against an IdP
+- Approvals are governed server-side; production should add notifications and workflow orchestration
+- Rate limits and network controls should live at a gateway in production
+- Secrets should be managed outside of env files; add rotation and audit

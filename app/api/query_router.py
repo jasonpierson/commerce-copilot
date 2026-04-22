@@ -15,6 +15,11 @@ router = APIRouter(tags=["query"])
 
 @router.post(
     "/query",
+    summary="Unified copilot entry point",
+    description=(
+        "Classifies the user message and returns a composed answer that can include retrieval-backed policy Q&A, "
+        "structured incident summaries, escalation guidance, inventory lookups, or approval analytics."
+    ),
     response_model=QueryResponse,
     responses={
         501: {"model": ErrorResponse},

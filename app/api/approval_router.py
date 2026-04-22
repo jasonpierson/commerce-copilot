@@ -58,6 +58,10 @@ def _error_response(
 
 @router.post(
     "/escalations",
+    summary="Create a pending escalation approval request for an incident",
+    description=(
+        "Creates a pending approval request tied to an incident code. Decisions must be taken by `ops_manager` or `admin`."
+    ),
     response_model=ApprovalRequestResponse,
     responses={
         400: {"model": ErrorResponse},
@@ -135,6 +139,8 @@ def create_incident_escalation(
 
 @router.get(
     "/approvals",
+    summary="List approvals with optional filters",
+    description="Browse approval work items with optional status, incident, and requester filters.",
     response_model=ApprovalListResponse,
     responses={
         502: {"model": ErrorResponse},
@@ -194,6 +200,8 @@ def list_approvals(
 
 @router.get(
     "/approvals/dashboard",
+    summary="Approval dashboard buckets and metrics",
+    description="Grouped approvals by status plus headline metrics and trends.",
     response_model=ApprovalDashboardResponse,
     responses={
         502: {"model": ErrorResponse},
@@ -240,6 +248,8 @@ def get_approval_dashboard(
 
 @router.get(
     "/approvals/dashboard/summary",
+    summary="Approval dashboard summary (headline + top risks)",
+    description="Concise summary of headline metrics and top risks.",
     response_model=ApprovalDashboardSummaryResponse,
     responses={
         502: {"model": ErrorResponse},
@@ -294,6 +304,8 @@ def get_approval_dashboard_summary(
 
 @router.get(
     "/operator/dashboard",
+    summary="Operator-oriented dashboard",
+    description="UI-friendly shape combining summary, buckets, and links.",
     response_model=OperatorDashboardResponse,
     responses={
         502: {"model": ErrorResponse},
@@ -382,6 +394,8 @@ def get_operator_dashboard(
 
 @router.get(
     "/approvals/{approval_id}",
+    summary="Get approval status",
+    description="Returns the structured approval record and current decision state.",
     response_model=ApprovalStatusResponse,
     responses={
         404: {"model": ErrorResponse},
@@ -420,6 +434,8 @@ def get_approval_status(approval_id: str) -> ApprovalStatusResponse | JSONRespon
 
 @router.get(
     "/approvals/{approval_id}/audit",
+    summary="Get approval audit history",
+    description="Audit trail for a given approval ID, optionally filtered by event type.",
     response_model=ApprovalAuditResponse,
     responses={
         404: {"model": ErrorResponse},
@@ -463,6 +479,8 @@ def get_approval_audit(
 
 @router.post(
     "/approvals/{approval_id}/decision",
+    summary="Apply an approval decision (authorized roles only)",
+    description="Only `ops_manager` or `admin` may decide approvals in the demo auth model.",
     response_model=ApprovalDecisionResponse,
     responses={
         400: {"model": ErrorResponse},

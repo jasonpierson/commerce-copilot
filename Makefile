@@ -1,7 +1,7 @@
 PYTHON ?= python3
 VENV_PYTHON = .venv/bin/python
 
-.PHONY: install run-api seed test demo eval smoke check-db-schema clean-approvals clean-full
+.PHONY: install run-api seed test demo eval smoke check-db-schema clean-approvals clean-full ui
 
 install:
 	$(PYTHON) -m venv .venv
@@ -34,3 +34,6 @@ clean-approvals:
 
 clean-full:
 	. .venv/bin/activate && set -a && . .env.local && set +a && python -m scripts.cleanup_demo_data --scope full --apply
+
+ui:
+	. .venv/bin/activate && streamlit run ui/app.py

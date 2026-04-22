@@ -11,7 +11,18 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Governed Commerce Operations Copilot API",
         version="0.1.0",
-        description="First backend slice for policy/process Q&A over the retrieval layer.",
+        description=(
+            "Backend slice for a governed operations copilot: retrieval-backed policy/process Q&A, "
+            "structured incident/inventory reads, and an approval workflow with auditability."
+        ),
+        contact={
+            "name": "Demo Maintainers",
+            "url": "https://github.com/",
+        },
+        license_info={
+            "name": "Proprietary demo; see repository",
+            "url": "https://github.com/",
+        },
     )
 
     @app.get("/health")
