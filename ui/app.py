@@ -1,17 +1,53 @@
 import os
 import json
+from base64 import b64encode
 from typing import Any, Dict, List
 
 import requests
 import streamlit as st
 
 API_BASE_DEFAULT = os.getenv("GCOP_API_BASE", "http://127.0.0.1:8000")
+UI_PASSWORD = os.getenv("DEMO_ACCESS_PASSWORD", "").strip()
 
 st.set_page_config(page_title="CommerceOps Copilot — Demo UI", layout="wide")
+
+
+def _compose_demo_access_headers(password: str | None) -> Dict[str, str]:
+    if not password:
+        return {}
+    token = b64encode(f"demo:{password}".encode("utf-8")).decode("ascii")
+    return {
+        "Authorization": f"Basic {token}",
+        "X-Demo-Password": password,
+    }
+
+
+def _render_access_gate() -> None:
+    st.title("Governed Commerce Operations Copilot — Demo UI")
+    st.info("This demo UI is password-protected.")
+    password = st.text_input("Demo access password", type="password")
+    if st.button("Unlock Demo"):
+        if password == UI_PASSWORD:
+            st.session_state["demo_access_password"] = password
+            st.rerun()
+        st.error("That password did not match the configured demo password.")
+    st.stop()
+
+
+if UI_PASSWORD and st.session_state.get("demo_access_password") != UI_PASSWORD:
+    _render_access_gate()
 
 # Sidebar configuration
 st.sidebar.header("Settings")
 api_base = st.sidebar.text_input("API base URL", value=API_BASE_DEFAULT)
+demo_access_password = st.sidebar.text_input(
+    "Demo access password",
+    value=st.session_state.get("demo_access_password", ""),
+    type="password",
+    help="Required when the API is protected with DEMO_ACCESS_PASSWORD.",
+)
+if demo_access_password:
+    st.session_state["demo_access_password"] = demo_access_password
 role = st.sidebar.selectbox(
     "Demo role",
     options=["support_analyst", "engineering_support", "ops_manager", "admin"],
@@ -21,6 +57,7 @@ user_id = st.sidebar.text_input("User ID", value="demo-support-001")
 st.sidebar.caption("Headers are sent as X-User-Id / X-User-Role when provided.")
 
 st.title("Governed Commerce Operations Copilot — Demo UI")
+st.caption("Recommended deployment shape: host the API, keep Streamlit local-only for reviewer demos.")
 
 # Helper functions
 
@@ -38,6 +75,7 @@ def _auth_headers() -> Dict[str, str]:
     return {
         "X-User-Id": user_id.strip() if user_id else "",
         "X-User-Role": role,
+        **_compose_demo_access_headers(st.session_state.get("demo_access_password")),
     }
 
 

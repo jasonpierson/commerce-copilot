@@ -45,6 +45,7 @@ User / Support Agent
 
 ## Governance Boundary
 
+- demo access can be gated globally with `DEMO_ACCESS_PASSWORD`
 - incident escalations are approval-gated
 - approval create / status / decision / audit are explicit API paths
 - mock auth headers define the acting principal:

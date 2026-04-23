@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import json
+import os
 from pathlib import Path
 import tempfile
 from unittest import TestCase
@@ -9,6 +10,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.api.auth import build_demo_access_headers
 from app.api.approval_service import ApprovalConflictError, ApprovalNotFoundError, ApprovalPermissionError
 from app.api.audit import ApiAuditSink
 from app.api.main import app
@@ -2112,3 +2114,28 @@ class ApiWorkflowTests(TestCase):
             self.assertEqual(payload["doc_keys"], [])
             self.assertEqual(payload["approval_ids"], [])
             self.assertEqual(response.request_id, "req_trace_001")
+
+    def test_demo_password_protects_non_health_routes(self) -> None:
+        with patch.dict(os.environ, {"DEMO_ACCESS_PASSWORD": "demo-secret"}, clear=False):
+            health_response = self.client.get("/health")
+            query_response = self.client.post(
+                "/api/v1/query",
+                json={"message": "What is the return process for damaged products?"},
+            )
+
+        self.assertEqual(health_response.status_code, 200)
+        self.assertEqual(query_response.status_code, 401)
+        self.assertEqual(query_response.json()["error"]["code"], "DEMO_ACCESS_REQUIRED")
+
+    def test_demo_password_allows_authorized_requests(self) -> None:
+        fake_approval_service = FakeApprovalService()
+        headers = build_demo_access_headers("demo-secret")
+
+        with patch.dict(os.environ, {"DEMO_ACCESS_PASSWORD": "demo-secret"}, clear=False), patch(
+            "app.api.approval_router.ApprovalService.from_env",
+            return_value=fake_approval_service,
+        ):
+            response = self.client.get("/api/v1/approvals", headers=headers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")

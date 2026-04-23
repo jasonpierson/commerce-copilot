@@ -1,7 +1,7 @@
 PYTHON ?= python3
 VENV_PYTHON = .venv/bin/python
 
-.PHONY: install run-api seed test demo eval smoke check-db-schema clean-approvals clean-full ui
+.PHONY: install run-api run-api-prod seed test demo eval smoke check-db-schema clean-approvals clean-full ui inspect-logs
 
 install:
 	$(PYTHON) -m venv .venv
@@ -10,6 +10,9 @@ install:
 
 run-api:
 	. .venv/bin/activate && python scripts/run_api.py
+
+run-api-prod:
+	. .venv/bin/activate && APP_ENV=production APP_HOST=0.0.0.0 APP_PORT=8000 python scripts/run_api.py
 
 seed:
 	. .venv/bin/activate && set -a && . .env.local && set +a && python scripts/seed_domain_data.py
@@ -37,3 +40,6 @@ clean-full:
 
 ui:
 	. .venv/bin/activate && streamlit run ui/app.py
+
+inspect-logs:
+	. .venv/bin/activate && python scripts/inspect_logs.py --tail 50

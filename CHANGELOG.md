@@ -5,6 +5,9 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 ## Unreleased
 
 ### Added
+- Demo password protection for the API and Streamlit UI using `DEMO_ACCESS_PASSWORD`
+- `scripts/inspect_logs.py` for reviewer-friendly inspection of query, approval, and retrieval traces
+- GitHub Actions CI workflow for compile + unit test coverage
 - Declarative route-rule structure plus route-specific handlers in `app/api/query_service.py`
 - Persistent application trace logs:
   - `artifacts/query_events.jsonl`
@@ -46,6 +49,9 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - `GET /api/v1/operator/dashboard` as a UI-oriented operator dashboard shape
 
 ### Changed
+- `scripts/run_api.py` now respects `APP_ENV`, `APP_HOST`, and `APP_PORT`
+- `Dockerfile` now launches through `scripts/run_api.py`
+- Deployment docs now define Koyeb-hosted API + local-only Streamlit as the authoritative demo path
 - `/api/v1/query` orchestration is now split into cleaner route handlers instead of one large branch-heavy method
 - Approval create/decision flows now persist request-trace artifacts to disk
 - Approval and query routers now resolve the acting demo principal from headers before applying workflow logic

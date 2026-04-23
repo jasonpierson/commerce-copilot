@@ -44,6 +44,17 @@ What the demo shows:
 - escalation guidance
 - approval request, status, decision, and audit trail
 
+## Hosting Position
+
+- authoritative hosted surface:
+  - FastAPI API on Koyeb using the repo `Dockerfile`
+- Streamlit:
+  - local-only reviewer helper
+  - not part of the hosted deployment path
+- reviewer options:
+  - use `/docs` on the hosted API
+  - or run `make ui` locally against the hosted API
+
 ## Current Status
 
 ### Implemented
@@ -64,7 +75,7 @@ What the demo shows:
 - API test coverage for the main approval, inventory, and incident flows
 
 ### Not Implemented Yet
-- frontend/UI
+- production operator frontend
 - production authentication/authorization beyond explicit mock auth headers
 - production-grade approval notifications or workflow orchestration
 - incident/approval analytics beyond the current dashboard metrics
@@ -173,6 +184,7 @@ Useful commands:
 - `make smoke`
 - `make demo`
 - `make ui`
+- `make inspect-logs`
 - `make clean-approvals`
 - `make clean-full`
 
@@ -258,6 +270,7 @@ Shared response shape:
 This repo now uses explicit mock/demo auth headers for user context and approval decisions:
 - `X-User-Id`
 - `X-User-Role`
+- `Authorization: Basic demo:<DEMO_ACCESS_PASSWORD>` or `X-Demo-Password`
 
 What this does:
 - keeps the project demo-friendly
@@ -268,6 +281,8 @@ Current behavior:
 - query and approval routes accept the headers above
 - approval decisions only succeed for `ops_manager` or `admin`
 - if headers are present, they override any fallback role/user fields in the JSON body
+- if `DEMO_ACCESS_PASSWORD` is set, all non-`/health` routes require the demo password
+- `/docs` stays usable for reviewers because the API accepts Basic auth
 
 ## Example Query Behaviors
 
@@ -501,6 +516,11 @@ Typical variables:
 ```bash
 OPENAI_API_KEY=...
 SUPABASE_DB_URL=...
+DEMO_ACCESS_PASSWORD=...
+APP_ENV=development
+APP_HOST=127.0.0.1
+APP_PORT=8000
+GCOP_API_BASE=http://127.0.0.1:8000
 EMBEDDING_PROVIDER=openai
 EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_DIMENSIONS=1536
@@ -513,6 +533,9 @@ Notes:
 - default embedding dimension is `1536`
 - `EMBEDDING_PROVIDER` must stay `openai` for ingestion and live retrieval
 - `DB_APP_SCHEMA` defaults to `app_private`
+- `DEMO_ACCESS_PASSWORD` enables the demo password gate for API and UI access
+- `APP_ENV`, `APP_HOST`, and `APP_PORT` drive the API startup mode and bind settings
+- `GCOP_API_BASE` points the local Streamlit UI at the API you want to demo
 
 Retrieval tuning is env-driven as well; the retrieval config reads several runtime knobs from environment variables.
 
@@ -525,6 +548,16 @@ set -a
 source .env.local
 set +a
 python scripts/run_api.py
+```
+
+Production-lite local bind:
+
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+APP_ENV=production APP_HOST=0.0.0.0 APP_PORT=8000 python scripts/run_api.py
 ```
 
 ### Run Ingestion
@@ -707,6 +740,12 @@ python scripts/inspect_logs.py --request-id <req_id>
 python scripts/inspect_logs.py --approval-id <apr_id>
 ```
 
+Or use the make target:
+
+```bash
+make inspect-logs
+```
+
 ## Future Public Deployment Security Notes
 
 If you later deploy this API publicly, add a minimum security envelope before exposing it on the internet.
@@ -744,6 +783,17 @@ set +a
 python scripts/run_api.py
 ```
 
+### 1a. Launch the local demo UI
+Keep Streamlit local and point it at the API you want to review.
+
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+streamlit run ui/app.py
+```
+
 ### 2. Seed the demo operational data
 Use this when inventory, incidents, locations, or demo users are missing.
 
@@ -766,6 +816,12 @@ Who is holding the pending approvals for INC-1091?
 Which requester is creating the most approval load?
 Which incidents have the most pending approval pressure?
 Which approver is the bottleneck?
+```
+
+### 3a. Inspect traces after a smoke test
+```bash
+source .venv/bin/activate
+python scripts/inspect_logs.py --tail 50
 ```
 
 ### 4. Run the local test suite

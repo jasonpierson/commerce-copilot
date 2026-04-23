@@ -11,6 +11,8 @@ This project is currently optimized for local development and controlled smoke t
 - The FastAPI backend owns DB access for those tables; browser/client code does not query them directly.
 - Supabase Data API access for app tables is intentionally not part of the architecture.
 - RLS is intentionally not applied yet because direct client exposure to those tables has been removed.
+- `DEMO_ACCESS_PASSWORD`, when set, gates every non-`/health` API route.
+- The recommended public-review shape is API hosted, Streamlit local-only.
 
 ## Deployment-Hardening Checklist
 
@@ -18,6 +20,7 @@ Use this list before exposing the API behind a public hostname.
 
 ### 1. Authentication
 - Require authentication on every route, including `/api/v1/query`.
+- Keep the demo password gate as a lightweight outer layer, not the final auth system.
 - Prefer short-lived bearer tokens or session-backed auth from a trusted identity provider.
 - Split operator/admin permissions from read-only analyst permissions.
 - Treat approval decision routes as higher-sensitivity actions and require stronger role checks.

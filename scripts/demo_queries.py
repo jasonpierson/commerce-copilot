@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
+from app.api.auth import build_demo_access_headers
 from app.api.main import app
 
 
@@ -53,11 +55,14 @@ def cleanup_approvals() -> None:
 def main() -> int:
     args = parse_args()
     client = TestClient(app)
+    demo_access_headers = build_demo_access_headers(os.getenv("DEMO_ACCESS_PASSWORD"))
     support_headers = {
+        **demo_access_headers,
         "X-User-Id": "demo-support-001",
         "X-User-Role": "support_analyst",
     }
     manager_headers = {
+        **demo_access_headers,
         "X-User-Id": "demo-ops-manager-001",
         "X-User-Role": "ops_manager",
     }
@@ -89,6 +94,7 @@ def main() -> int:
             "message": "Summarize incident INC-1091 and tell me the likely customer impact.",
         },
         headers={
+            **demo_access_headers,
             "X-User-Id": "demo-engineering-support-001",
             "X-User-Role": "engineering_support",
         },
