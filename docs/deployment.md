@@ -70,6 +70,9 @@ Reference docs used:
 
 - current hosted demo URL:
   - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
+- auth:
+  - Basic auth username: `demo`
+  - password: `DEMO_ACCESS_PASSWORD`
 
 ### Option A — Control panel
 
@@ -105,6 +108,12 @@ Reference docs used:
 - if the deploy is bad:
   - roll back to the previous working Git commit in Koyeb
   - rerun the smoke script
+
+Latest successful live validation:
+- date:
+  - `2026-04-24`
+- result:
+  - hosted smoke succeeded end to end against the live Koyeb URL
 
 ### Option B — CLI-assisted settings
 
@@ -200,6 +209,12 @@ If you want a non-mutating run:
 GCOP_API_BASE="https://<your-host>.koyeb.app" python scripts/smoke_remote_demo.py --skip-approval-flow
 ```
 
+Convenience target for the live deployment:
+
+```bash
+make smoke-remote-live
+```
+
 ## Debugging A Bad Hosted Response
 
 - step 1:
@@ -240,3 +255,10 @@ python scripts/inspect_logs.py --trace-request <request_id>
 - `SECURITY.md`
 - `docs/architecture.md`
 - `docs/demo.md`
+- `docs/release-checklist.md`
+
+## Optional Custom Domain Plan
+
+- future polish option:
+  - map a friendly domain such as `copilot.yourdomain.dev`
+- keep the current Koyeb URL authoritative until a custom domain is actually configured

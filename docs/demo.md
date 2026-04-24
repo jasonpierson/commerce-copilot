@@ -38,9 +38,12 @@
 ### Hosted Review Path
 
 - step 1:
-  - open the base URL
+  - open `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
 - step 2:
-  - verify the landing response explains auth and next steps
+  - verify the landing response explains:
+    - what the app is
+    - where to go next
+    - that Streamlit is local-only
 - step 3:
   - open `/docs`
 - step 4:
@@ -53,6 +56,19 @@
     - one approval flow
 - step 6:
   - if anything looks off, run the hosted smoke script
+
+## Live Hosted Validation Notes
+
+- verified live on:
+  - `2026-04-24`
+- confirmed:
+  - `/` returns `200`
+  - `/docs` loads correctly behind the password gate
+  - `/health` returns `200`
+  - `/ready` returns `200`
+  - the hosted smoke path succeeds end to end
+- practical note:
+  - the first hosted smoke run may need a longer timeout during cold start
 
 ### Path B — Local UI review
 

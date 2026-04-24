@@ -77,7 +77,7 @@ def main() -> int:
     checks: list[tuple[str, bool, str]] = []
 
     try:
-        root = get_json(args.base_url, "/", headers={}, timeout=args.timeout)
+        root = get_json(args.base_url, "/", headers=support_headers, timeout=args.timeout)
         checks.append(("root", "/docs" in [item["href"] for item in root.get("next_steps", [])], "root landing"))
 
         health = get_json(args.base_url, "/health", headers={}, timeout=args.timeout)

@@ -142,6 +142,9 @@ def create_app() -> FastAPI:
                 "protected_routes": "All routes except /health and /ready when DEMO_ACCESS_PASSWORD is set.",
                 "how_to_authenticate": demo_access_help_text(),
             },
+            "reviewer_notes": {
+                "streamlit": "Streamlit is a local-only reviewer companion and is not hosted on this URL.",
+            },
         }
         accepts_html = "text/html" in request.headers.get("accept", "").lower()
         if accepts_html:
@@ -159,6 +162,8 @@ def create_app() -> FastAPI:
                 <h2>Authentication</h2>
                 <p>{payload['auth']['protected_routes']}</p>
                 <p>{payload['auth']['how_to_authenticate']}</p>
+                <h2>Reviewer notes</h2>
+                <p>{payload['reviewer_notes']['streamlit']}</p>
               </body>
             </html>
             """

@@ -25,7 +25,7 @@
 ## After Deploy
 
 - run remote smoke:
-  - `GCOP_API_BASE=https://<host> make smoke-remote`
+  - `make smoke-remote-live`
 - verify:
   - `/health`
   - `/ready`

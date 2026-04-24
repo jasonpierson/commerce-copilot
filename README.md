@@ -60,6 +60,9 @@ What the demo shows:
   - or run `make ui` locally against the hosted API
 - current hosted demo URL:
   - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
+- hosted review auth:
+  - Basic auth username: `demo`
+  - password: `DEMO_ACCESS_PASSWORD`
 
 ## Current Status
 
@@ -191,6 +194,7 @@ Useful commands:
 - `make eval`
 - `make smoke`
 - `make smoke-remote`
+- `make smoke-remote-live`
 - `make verify-hosted-contract`
 - `make verify-env`
 - `make demo`
@@ -299,7 +303,12 @@ Current behavior:
 
 ### Hosted Review Path
 Use this flow when reviewing a deployed demo:
-- open `<host>/docs`
+- open `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
+- confirm the landing page explains:
+  - what the app is
+  - where to go next
+  - that Streamlit is local-only
+- open `/docs`
 - authenticate with:
   - Basic auth user: `demo`
   - password: `DEMO_ACCESS_PASSWORD`
@@ -879,6 +888,12 @@ set -a
 source .env.local
 set +a
 python scripts/smoke_remote_demo.py
+```
+
+Recommended for the live Koyeb deployment:
+
+```bash
+make smoke-remote-live
 ```
 
 ### 3c. Verify env before deploy or password rotation

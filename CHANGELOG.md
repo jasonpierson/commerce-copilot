@@ -70,6 +70,20 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - remote smoke now checks:
   - root landing behavior
   - missing-password rejection
+
+## 2026-04-24 — First Hosted Private Demo Milestone
+
+### Added
+- Live hosted demo URL documented across:
+  - `README.md`
+  - `docs/deployment.md`
+  - `docs/release-checklist.md`
+- `make smoke-remote-live` for low-friction live verification
+
+### Changed
+- Live Koyeb hosted smoke validation succeeded end to end on `2026-04-24`
+- Hosted reviewer docs now match the actual landing page and `/docs` experience
+- Root landing response now calls out that Streamlit is local-only
 - `Dockerfile` is now a production-lite non-root immutable runtime image
 - local and hosted logs now share a more consistent JSON event shape, with hosted events emitted to stdout
 - `README.md` and `docs/deployment.md` now describe the concrete Koyeb deployment path, readiness semantics, hosted smoke testing, and review flow
