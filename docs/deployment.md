@@ -184,7 +184,7 @@ source .venv/bin/activate
 set -a
 source .env.local
 set +a
-GCOP_API_BASE="https://<your-host>.koyeb.app" python scripts/smoke_remote_demo.py
+GCOP_API_BASE="https://harsh-juieta-jasons-org-14a2695f.koyeb.app/" python scripts/smoke_remote_demo.py
 ```
 
 What it checks:
@@ -206,7 +206,7 @@ GCOP_API_BASE="https://harsh-juieta-jasons-org-14a2695f.koyeb.app/" python scrip
 If you want a non-mutating run:
 
 ```bash
-GCOP_API_BASE="https://<your-host>.koyeb.app" python scripts/smoke_remote_demo.py --skip-approval-flow
+GCOP_API_BASE="https://harsh-juieta-jasons-org-14a2695f.koyeb.app/" python scripts/smoke_remote_demo.py --skip-approval-flow
 ```
 
 Convenience target for the live deployment:
@@ -247,7 +247,7 @@ python scripts/inspect_logs.py --trace-request <request_id>
 - local-only reviewer helper
 - not part of the hosted deployment contract
 - can point at the hosted API with:
-  - `GCOP_API_BASE=https://<your-host>.koyeb.app`
+  - `GCOP_API_BASE=https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
 
 ## Related Docs
 
@@ -256,9 +256,3 @@ python scripts/inspect_logs.py --trace-request <request_id>
 - `docs/architecture.md`
 - `docs/demo.md`
 - `docs/release-checklist.md`
-
-## Optional Custom Domain Plan
-
-- future polish option:
-  - map a friendly domain such as `copilot.yourdomain.dev`
-- keep the current Koyeb URL authoritative until a custom domain is actually configured

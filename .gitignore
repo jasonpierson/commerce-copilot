@@ -8,3 +8,4 @@ artifacts/
 ai-handoff.md
 ChatGPT-Development.md
 .DS_Store
+.make*.log

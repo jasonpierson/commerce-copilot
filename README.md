@@ -1,5 +1,33 @@
 # CommerceOpsCopilot
 
+Governed Commerce Operations Copilot is a live, password-protected hosted demo of an enterprise support copilot that combines:
+
+- retrieval-backed policy and SOP guidance
+- structured incident and inventory lookups
+- approval-gated escalation workflows
+- auditability and hosted smoke verification
+
+Review this project in under 2 minutes:
+
+- live hosted demo:
+  - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
+- click first:
+  - `/`
+  - `/docs`
+- best reviewer flow:
+  - read the root landing page
+  - open `/docs`
+  - run one `POST /api/v1/query`
+  - run one approval flow
+- hosted auth:
+  - Basic auth username: `demo`
+  - password: `DEMO_ACCESS_PASSWORD`
+- local reviewer UI:
+  - `make ui`
+- real vs demo-only:
+  - real backend, real embeddings, real hosted deploy
+  - demo auth, seeded data, and demo-safe approval workflow
+
 For deployment hardening guidance, see [`SECURITY.md`](SECURITY.md).
 
 For the hosted release runbook, see [`docs/release-checklist.md`](docs/release-checklist.md).
@@ -12,6 +40,31 @@ Governed Commerce Operations Copilot is a Python/FastAPI prototype for a support
 - lightweight operational analytics over approval load
 
 The project started as an ingestion/retrieval scaffold and has grown into a working backend slice for policy Q&A, incident support, inventory lookup, and approval workflow operations.
+
+## Visual Tour
+
+### Hosted API overview
+![Hosted OpenAPI overview](docs/screenshots/openapi-overview.png)
+
+### Interactive query example
+![Hosted OpenAPI query example](docs/screenshots/openapi-query-example.png)
+
+### Local Streamlit reviewer UI
+![Local Streamlit reviewer UI](docs/screenshots/streamlit-ui.png)
+
+## Governed Approval Flow
+
+The key differentiator in this project is that escalation is governed, not just suggested.
+
+Flow:
+
+1. create an escalation request
+2. retrieve approval status
+3. submit an approval decision
+4. trace the request and approval events
+
+Approval flow example:
+![Approval flow example](docs/screenshots/approval-flow.png)
 
 ## 2-Minute Demo
 

@@ -8,6 +8,17 @@
 - persistent audit and runtime traces
 - a private hosted demo path instead of a toy local-only project
 
+## Visual Walkthrough
+
+### Hosted landing page
+![Hosted landing page](screenshots/landing-page.png)
+
+### OpenAPI query example
+![OpenAPI query example](screenshots/openapi-query-example.png)
+
+### Approval workflow response
+![Approval workflow response](screenshots/approval-flow.png)
+
 ## Fast Review Paths
 
 ### Path A — Hosted API review
@@ -35,28 +46,6 @@
    - `GET /api/v1/approvals/{approval_id}`
    - `POST /api/v1/approvals/{approval_id}/decision`
 
-### Hosted Review Path
-
-- step 1:
-  - open `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
-- step 2:
-  - verify the landing response explains:
-    - what the app is
-    - where to go next
-    - that Streamlit is local-only
-- step 3:
-  - open `/docs`
-- step 4:
-  - authenticate with the shared demo password
-- step 5:
-  - run:
-    - one policy query
-    - one inventory lookup
-    - one incident summary
-    - one approval flow
-- step 6:
-  - if anything looks off, run the hosted smoke script
-
 ## Live Hosted Validation Notes
 
 - verified live on:
@@ -70,6 +59,37 @@
 - practical note:
   - the first hosted smoke run may need a longer timeout during cold start
 
+## Manual Hosted Reviewer Pass
+
+- completed on:
+  - `2026-04-24`
+- sequence validated:
+  - root landing page
+  - `/docs`
+  - policy query
+  - inventory lookup
+  - incident summary
+  - escalation request
+  - approval status lookup
+  - approval decision
+  - request-id capture for log tracing
+- representative request IDs from the reviewer pass:
+  - policy:
+    - `req_238703f6a455`
+  - inventory:
+    - `req_e4182b1e7f34`
+  - incident:
+    - `req_3c8caa8656f7`
+  - approval create:
+    - `req_af8b5f366715`
+  - approval status:
+    - `req_75c8b30d4294`
+  - approval decision:
+    - `req_8a9d820df29b`
+- friction fixed during this pass:
+  - root landing page now explicitly says Streamlit is local-only
+  - hosted review docs now match the live URL and auth flow
+
 ### Path B — Local UI review
 
 ```bash
@@ -82,7 +102,7 @@ make ui
 Or point the UI at a hosted API:
 
 ```bash
-GCOP_API_BASE="https://<your-host>.koyeb.app" make ui
+GCOP_API_BASE="https://harsh-juieta-jasons-org-14a2695f.koyeb.app/" make ui
 ```
 
 ## Password Gate Notes
@@ -96,15 +116,6 @@ GCOP_API_BASE="https://<your-host>.koyeb.app" make ui
 - local Streamlit against hosted FastAPI:
   - update `.env.local` or the sidebar password field
   - reload the page after rotation
-
-## Screenshot Placeholders
-
-- add current images under:
-  - `docs/screenshots/streamlit-ui.png`
-  - `docs/screenshots/openapi-docs.png`
-  - `docs/screenshots/approval-flow.png`
-
-These should be refreshed after the real hosted deployment is up.
 
 ## Suggested Query Prompts
 

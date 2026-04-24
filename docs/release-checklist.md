@@ -52,7 +52,7 @@
 
 - redeploy the previous known-good Git commit
 - rerun:
-  - `make smoke-remote`
+  - `make smoke-remote-live`
 
 ## Hosted Demo URL
 

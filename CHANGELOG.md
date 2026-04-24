@@ -8,7 +8,7 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - `docs/release-checklist.md` for low-stress hosted demo updates
 - `scripts/verify_env.py` for startup/readiness env checks before deploy
 - richer root landing response for hosted reviewers
-- screenshot placeholder catalog under `docs/screenshots/`
+- canonical screenshot set under `docs/screenshots/`
 - `koyeb.yaml` as the repo deployment source of truth for the hosted demo
 - `GET /ready` for config + DB readiness checks alongside `GET /health`
 - lightweight in-memory rate limiting for hosted query and approval mutation routes
@@ -64,12 +64,21 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
   - mock headers vs real identity
   - in-memory limits vs production rate limiting
 - deployment docs now include:
-  - current hosted URL placeholder
+  - current hosted URL
   - post-deploy validation checklist
   - request-id based hosted debugging flow
 - remote smoke now checks:
   - root landing behavior
   - missing-password rejection
+- screenshots are now embedded directly in:
+  - `README.md`
+  - `docs/demo.md`
+- screenshot naming is now stable and descriptive:
+  - `landing-page.png`
+  - `openapi-overview.png`
+  - `openapi-query-example.png`
+  - `approval-flow.png`
+  - `streamlit-ui.png`
 
 ## 2026-04-24 — First Hosted Private Demo Milestone
 
@@ -82,6 +91,7 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 
 ### Changed
 - Live Koyeb hosted smoke validation succeeded end to end on `2026-04-24`
+- manual hosted reviewer pass succeeded end to end on `2026-04-24`
 - Hosted reviewer docs now match the actual landing page and `/docs` experience
 - Root landing response now calls out that Streamlit is local-only
 - `Dockerfile` is now a production-lite non-root immutable runtime image
