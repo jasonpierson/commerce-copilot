@@ -30,10 +30,9 @@ WORKDIR /app
 
 RUN adduser --disabled-password --gecos "" --home /app appuser
 
-COPY --from=builder /dist/*.whl /tmp/package.whl
-RUN python -m pip install --upgrade pip && \
-    python -m pip install /tmp/package.whl && \
-    rm -f /tmp/package.whl
+COPY --from=builder /dist/*.whl /tmp/
+RUN python -m pip install /tmp/*.whl && \
+    rm -f /tmp/*.whl
 
 RUN mkdir -p /app/scripts /app/artifacts && chown -R appuser:appuser /app
 
