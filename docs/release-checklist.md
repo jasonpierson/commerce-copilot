@@ -57,4 +57,4 @@
 ## Hosted Demo URL
 
 - current hosted demo URL:
-  - `<fill-in-after-live-deploy>`
+  - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`

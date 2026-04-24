@@ -59,7 +59,7 @@ What the demo shows:
   - use `/docs` on the hosted API
   - or run `make ui` locally against the hosted API
 - current hosted demo URL:
-  - `<fill-in-after-live-deploy>`
+  - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
 
 ## Current Status
 

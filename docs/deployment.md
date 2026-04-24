@@ -69,7 +69,7 @@ Reference docs used:
 ## Current Hosted Demo URL
 
 - current hosted demo URL:
-  - `<fill-in-after-live-deploy>`
+  - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
 
 ### Option A — Control panel
 
@@ -185,6 +185,14 @@ What it checks:
 - inventory lookup
 - incident summary
 - disposable approval flow by default
+
+Cold-start note:
+- the first hosted smoke run may need a longer timeout while the Koyeb service wakes up
+- if needed, retry with:
+
+```bash
+GCOP_API_BASE="https://harsh-juieta-jasons-org-14a2695f.koyeb.app/" python scripts/smoke_remote_demo.py --timeout 90
+```
 
 If you want a non-mutating run:
 
