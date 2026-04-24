@@ -4,12 +4,13 @@ from dataclasses import dataclass
 import os
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.api.approval_router import router as approval_router
 from app.api.auth import (
     InMemoryRateLimiter,
     current_rate_limit_rules,
+    demo_access_help_text,
     demo_access_denied_response,
     is_demo_access_allowed,
     rate_limit_exceeded_response,
@@ -124,17 +125,45 @@ def create_app() -> FastAPI:
             },
         )
 
-    @app.get("/", include_in_schema=False)
-    def root() -> JSONResponse:
-        return JSONResponse(
-            {
-                "name": "Governed Commerce Operations Copilot API",
-                "docs": "/docs",
-                "health": "/health",
-                "ready": "/ready",
-                "query": "/api/v1/query",
-            }
-        )
+    @app.get("/", include_in_schema=False, response_model=None)
+    def root(request: Request) -> JSONResponse | HTMLResponse:
+        payload = {
+            "name": "Governed Commerce Operations Copilot API",
+            "description": (
+                "Private hosted demo for governed operations support: retrieval-backed guidance, "
+                "structured incident/inventory answers, and approval-gated escalation workflows."
+            ),
+            "next_steps": [
+                {"label": "Open interactive API docs", "href": "/docs"},
+                {"label": "Check liveness", "href": "/health"},
+                {"label": "Check readiness", "href": "/ready"},
+            ],
+            "auth": {
+                "protected_routes": "All routes except /health and /ready when DEMO_ACCESS_PASSWORD is set.",
+                "how_to_authenticate": demo_access_help_text(),
+            },
+        }
+        accepts_html = "text/html" in request.headers.get("accept", "").lower()
+        if accepts_html:
+            items = "".join(
+                f"<li><a href='{item['href']}'>{item['label']}</a></li>" for item in payload["next_steps"]
+            )
+            html = f"""
+            <html>
+              <head><title>{payload['name']}</title></head>
+              <body>
+                <h1>{payload['name']}</h1>
+                <p>{payload['description']}</p>
+                <h2>Next steps</h2>
+                <ul>{items}</ul>
+                <h2>Authentication</h2>
+                <p>{payload['auth']['protected_routes']}</p>
+                <p>{payload['auth']['how_to_authenticate']}</p>
+              </body>
+            </html>
+            """
+            return HTMLResponse(html)
+        return JSONResponse(payload)
 
     app.include_router(query_router, prefix="/api/v1")
     app.include_router(incident_router, prefix="/api/v1")

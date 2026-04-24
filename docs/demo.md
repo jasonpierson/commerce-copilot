@@ -12,13 +12,18 @@
 
 ### Path A — Hosted API review
 
-1. Open the hosted `/docs`.
-2. Authenticate with:
+1. Open the hosted base URL.
+2. Confirm the landing page points you to:
+   - `/docs`
+   - `/health`
+   - `/ready`
+3. Open the hosted `/docs`.
+4. Authenticate with:
    - username:
      - `demo`
    - password:
      - the shared `DEMO_ACCESS_PASSWORD`
-3. Try these flows:
+5. Try these flows:
    - `POST /api/v1/query`
      - policy question
    - `POST /api/v1/query`
@@ -29,6 +34,25 @@
      - create approval
    - `GET /api/v1/approvals/{approval_id}`
    - `POST /api/v1/approvals/{approval_id}/decision`
+
+### Hosted Review Path
+
+- step 1:
+  - open the base URL
+- step 2:
+  - verify the landing response explains auth and next steps
+- step 3:
+  - open `/docs`
+- step 4:
+  - authenticate with the shared demo password
+- step 5:
+  - run:
+    - one policy query
+    - one inventory lookup
+    - one incident summary
+    - one approval flow
+- step 6:
+  - if anything looks off, run the hosted smoke script
 
 ### Path B — Local UI review
 
@@ -44,6 +68,27 @@ Or point the UI at a hosted API:
 ```bash
 GCOP_API_BASE="https://<your-host>.koyeb.app" make ui
 ```
+
+## Password Gate Notes
+
+- local FastAPI:
+  - set `DEMO_ACCESS_PASSWORD` in `.env.local`
+  - restart the API after changing it
+- hosted FastAPI:
+  - rotate the platform secret
+  - redeploy or restart the app
+- local Streamlit against hosted FastAPI:
+  - update `.env.local` or the sidebar password field
+  - reload the page after rotation
+
+## Screenshot Placeholders
+
+- add current images under:
+  - `docs/screenshots/streamlit-ui.png`
+  - `docs/screenshots/openapi-docs.png`
+  - `docs/screenshots/approval-flow.png`
+
+These should be refreshed after the real hosted deployment is up.
 
 ## Suggested Query Prompts
 

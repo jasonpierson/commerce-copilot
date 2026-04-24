@@ -77,11 +77,21 @@ def main() -> int:
     checks: list[tuple[str, bool, str]] = []
 
     try:
+        root = get_json(args.base_url, "/", headers={}, timeout=args.timeout)
+        checks.append(("root", "/docs" in [item["href"] for item in root.get("next_steps", [])], "root landing"))
+
         health = get_json(args.base_url, "/health", headers={}, timeout=args.timeout)
         checks.append(("health", health.get("status") == "ok", f"status={health.get('status')}"))
 
         ready = get_json(args.base_url, "/ready", headers={}, timeout=args.timeout)
         checks.append(("ready", ready.get("status") == "ready", f"status={ready.get('status')}"))
+
+        unauthorized = requests.post(
+            f"{args.base_url.rstrip('/')}/api/v1/query",
+            json={"message": ROOT_QUERY},
+            timeout=args.timeout,
+        )
+        checks.append(("password_gate", unauthorized.status_code == 401, f"status={unauthorized.status_code}"))
 
         policy = post_json(
             args.base_url,

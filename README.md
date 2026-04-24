@@ -2,6 +2,8 @@
 
 For deployment hardening guidance, see [`SECURITY.md`](SECURITY.md).
 
+For the hosted release runbook, see [`docs/release-checklist.md`](docs/release-checklist.md).
+
 Governed Commerce Operations Copilot is a Python/FastAPI prototype for a support-facing copilot that blends:
 
 - retrieval over a curated operations corpus
@@ -56,6 +58,8 @@ What the demo shows:
 - reviewer options:
   - use `/docs` on the hosted API
   - or run `make ui` locally against the hosted API
+- current hosted demo URL:
+  - `<fill-in-after-live-deploy>`
 
 ## Current Status
 
@@ -108,6 +112,7 @@ What the demo shows:
 
 ### Mock / Demo-Only
 - auth via `X-User-Id` and `X-User-Role`
+- password gate via `DEMO_ACCESS_PASSWORD`
 - disposable seeded operational data
 - approval workflow used as a demo-safe governance simulation
 
@@ -186,6 +191,8 @@ Useful commands:
 - `make eval`
 - `make smoke`
 - `make smoke-remote`
+- `make verify-hosted-contract`
+- `make verify-env`
 - `make demo`
 - `make ui`
 - `make inspect-logs`
@@ -556,6 +563,11 @@ Notes:
 - `PORT` is honored when the host injects it (for example on Koyeb)
 - `GCOP_API_BASE` points the local Streamlit UI at the API you want to demo
 
+Password rotation:
+- update `DEMO_ACCESS_PASSWORD`
+- restart or redeploy the API
+- update the Streamlit password field or your local env if you use the UI
+
 Retrieval tuning is env-driven as well; the retrieval config reads several runtime knobs from environment variables.
 
 ## Common Workflows
@@ -869,6 +881,15 @@ set +a
 python scripts/smoke_remote_demo.py
 ```
 
+### 3c. Verify env before deploy or password rotation
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python scripts/verify_env.py
+```
+
 ### 4. Run the local test suite
 ```bash
 source .venv/bin/activate
@@ -960,15 +981,17 @@ Representative seeded product:
 ## What Is Intentionally Demo-Only
 
 - Mock auth via `X-User-Id` and `X-User-Role` instead of a real IdP
+- Shared demo password gate instead of real user/session auth
 - No frontend session management or CSRF/session protection
 - Approval notifications/workflow orchestration are stubs
-- Basic rate-limiting and abuse controls are not enabled
+- Only lightweight in-memory rate limiting is enabled
 - Minimal UI (Streamlit) meant only for quick demos
 
 ## What Would Change For Production
 
 - Require auth on all non-health endpoints (API keys/OAuth/JWT)
-- Enforce per-principal rate limits and abuse detection at a gateway
+- Replace the shared demo password with real identity + token validation
+- Replace in-memory rate limiting with gateway/distributed enforcement
 - Stronger authorization policies; optionally RLS for mixed-sensitivity data
 - Managed secret storage; zero secrets in env files on hosts
 - Production log handling with redaction, retention, and alerting
@@ -982,6 +1005,7 @@ If you are new to the repo, start here:
 - `docs/architecture.md`
 - `docs/deployment.md`
 - `docs/demo.md`
+- `docs/release-checklist.md`
 - `koyeb.yaml`
 - `app/api/query_service.py`
 - `app/api/approval_service.py`

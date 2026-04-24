@@ -1,7 +1,7 @@
 PYTHON ?= python3
 VENV_PYTHON = .venv/bin/python
 
-.PHONY: install run-api run-api-prod seed test test-api demo eval smoke check-db-schema clean-approvals clean-full ui inspect-logs smoke-remote
+.PHONY: install run-api run-api-prod seed test test-api demo eval smoke check-db-schema clean-approvals clean-full ui inspect-logs smoke-remote verify-hosted-contract verify-env
 
 install:
 	$(PYTHON) -m venv .venv
@@ -49,3 +49,9 @@ inspect-logs:
 
 smoke-remote:
 	. .venv/bin/activate && set -a && . .env.local && set +a && python scripts/smoke_remote_demo.py
+
+verify-hosted-contract:
+	. .venv/bin/activate && python -m unittest tests.test_deployment_contract -v
+
+verify-env:
+	. .venv/bin/activate && set -a && . .env.local && set +a && python scripts/verify_env.py

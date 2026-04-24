@@ -21,6 +21,14 @@ class DeploymentContractTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "ok")
 
+    def test_root_route_explains_next_steps_and_auth(self) -> None:
+        response = self.client.get("/")
+        body = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("description", body)
+        self.assertIn("/docs", [step["href"] for step in body["next_steps"]])
+        self.assertIn("how_to_authenticate", body["auth"])
+
     def test_ready_route_reports_ready_when_env_and_db_are_ok(self) -> None:
         with patch.dict(
             os.environ,
@@ -63,6 +71,7 @@ class DeploymentContractTests(TestCase):
 
         self.assertEqual(unauthorized.status_code, 401)
         self.assertEqual(unauthorized.json()["error"]["code"], "DEMO_ACCESS_REQUIRED")
+        self.assertIn("how_to_authenticate", unauthorized.json()["error"]["details"])
         self.assertNotEqual(authorized.status_code, 401)
 
     def test_rate_limiter_returns_429_for_query_route(self) -> None:

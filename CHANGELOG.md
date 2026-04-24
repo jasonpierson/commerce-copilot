@@ -5,6 +5,10 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 ## Unreleased
 
 ### Added
+- `docs/release-checklist.md` for low-stress hosted demo updates
+- `scripts/verify_env.py` for startup/readiness env checks before deploy
+- richer root landing response for hosted reviewers
+- screenshot placeholder catalog under `docs/screenshots/`
 - `koyeb.yaml` as the repo deployment source of truth for the hosted demo
 - `GET /ready` for config + DB readiness checks alongside `GET /health`
 - lightweight in-memory rate limiting for hosted query and approval mutation routes
@@ -55,6 +59,17 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - `GET /api/v1/operator/dashboard` as a UI-oriented operator dashboard shape
 
 ### Changed
+- docs now separate more explicitly:
+  - demo password gate vs real auth
+  - mock headers vs real identity
+  - in-memory limits vs production rate limiting
+- deployment docs now include:
+  - current hosted URL placeholder
+  - post-deploy validation checklist
+  - request-id based hosted debugging flow
+- remote smoke now checks:
+  - root landing behavior
+  - missing-password rejection
 - `Dockerfile` is now a production-lite non-root immutable runtime image
 - local and hosted logs now share a more consistent JSON event shape, with hosted events emitted to stdout
 - `README.md` and `docs/deployment.md` now describe the concrete Koyeb deployment path, readiness semantics, hosted smoke testing, and review flow

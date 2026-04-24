@@ -20,6 +20,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tail", type=int, default=20, help="Number of recent events to print.")
     parser.add_argument("--request-id", dest="request_id", help="Filter by request_id.")
     parser.add_argument("--approval-id", dest="approval_id", help="Filter by approval_id.")
+    parser.add_argument(
+        "--trace-request",
+        dest="trace_request",
+        help="Show all matching query/retrieval/approval events for one request_id in chronological order.",
+    )
     return parser.parse_args()
 
 
@@ -96,7 +101,8 @@ def main() -> int:
     for path in resolve_log_paths(args.file):
         events.extend(load_events(path))
 
-    filtered = filter_events(events, request_id=args.request_id, approval_id=args.approval_id)
+    request_id = args.trace_request or args.request_id
+    filtered = filter_events(events, request_id=request_id, approval_id=args.approval_id)
     filtered.sort(key=event_sort_key)
     selected = filtered[-args.tail :] if args.tail > 0 else filtered
 

@@ -66,6 +66,11 @@ Reference docs used:
 
 ## Koyeb Deploy Sequence
 
+## Current Hosted Demo URL
+
+- current hosted demo URL:
+  - `<fill-in-after-live-deploy>`
+
 ### Option A — Control panel
 
 1. Create a new Koyeb app.
@@ -83,6 +88,23 @@ Reference docs used:
    - `DEMO_ACCESS_PASSWORD`
 6. Deploy.
 7. After the deployment turns healthy, run the remote smoke script.
+
+## Post-Deploy Validation Checklist
+
+- confirm the app is reachable
+- confirm:
+  - `GET /health` -> `200`
+  - `GET /ready` -> `200`
+- confirm password gate:
+  - `POST /api/v1/query` without password -> `401`
+  - same request with password -> `200`
+- run:
+  - `python scripts/smoke_remote_demo.py`
+- inspect logs by `request_id`
+- verify one approval request + decision flow
+- if the deploy is bad:
+  - roll back to the previous working Git commit in Koyeb
+  - rerun the smoke script
 
 ### Option B — CLI-assisted settings
 
@@ -168,6 +190,24 @@ If you want a non-mutating run:
 
 ```bash
 GCOP_API_BASE="https://<your-host>.koyeb.app" python scripts/smoke_remote_demo.py --skip-approval-flow
+```
+
+## Debugging A Bad Hosted Response
+
+- step 1:
+  - rerun the failing request and capture `request_id`
+- step 2:
+  - inspect platform logs for:
+    - `stream=query`
+    - `stream=retrieval`
+    - `stream=approval`
+- step 3:
+  - correlate by `request_id`
+- step 4:
+  - if reproducing locally, use:
+
+```bash
+python scripts/inspect_logs.py --trace-request <request_id>
 ```
 
 ## Log Strategy

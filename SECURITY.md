@@ -12,6 +12,10 @@ This project is currently optimized for local development and controlled smoke t
 - Supabase Data API access for app tables is intentionally not part of the architecture.
 - RLS is intentionally not applied yet because direct client exposure to those tables has been removed.
 - `DEMO_ACCESS_PASSWORD`, when set, gates every non-`/health` API route.
+- rotating the demo password means:
+  - update the env var
+  - restart or redeploy the API
+  - tell reviewers to refresh their local UI/client config
 - The recommended public-review shape is API hosted, Streamlit local-only.
 
 ## Deployment-Hardening Checklist
@@ -100,6 +104,7 @@ If this project is deployed publicly in the future, add a dedicated reporting co
 
 This repository uses mock/demo auth headers and a backend-only exposure model during development. Before any public deployment:
 
+- shared password gate is demo-only, not real identity
 - Replace mock headers with a real identity provider and token validation
 - Add per-user/token rate limits on `/api/v1/query` and approval endpoints
 - Enforce least-privilege authorization tied to real identities

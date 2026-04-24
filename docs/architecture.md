@@ -72,7 +72,11 @@ User / Support Agent
 
 ## Demo-Only vs Production
 
+- demo password gate:
+  - shared secret
+  - good enough for a private hosted demo
+  - not a replacement for real auth
 - Demo uses mock headers for auth; production should validate tokens against an IdP
 - Approvals are governed server-side; production should add notifications and workflow orchestration
-- Rate limits and network controls should live at a gateway in production
+- Demo uses in-memory rate limiting; production should move that to a gateway or shared service
 - Secrets should be managed outside of env files; add rotation and audit

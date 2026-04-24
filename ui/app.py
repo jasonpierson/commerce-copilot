@@ -8,6 +8,10 @@ import streamlit as st
 
 API_BASE_DEFAULT = os.getenv("GCOP_API_BASE", "http://127.0.0.1:8000")
 UI_PASSWORD = os.getenv("DEMO_ACCESS_PASSWORD", "").strip()
+PASSWORD_HELP = (
+    "Use the same shared DEMO_ACCESS_PASSWORD as the API. "
+    "If the password rotates, update your env or sidebar value and reload."
+)
 
 st.set_page_config(page_title="CommerceOps Copilot — Demo UI", layout="wide")
 
@@ -25,12 +29,13 @@ def _compose_demo_access_headers(password: str | None) -> Dict[str, str]:
 def _render_access_gate() -> None:
     st.title("Governed Commerce Operations Copilot — Demo UI")
     st.info("This demo UI is password-protected.")
+    st.caption(PASSWORD_HELP)
     password = st.text_input("Demo access password", type="password")
     if st.button("Unlock Demo"):
         if password == UI_PASSWORD:
             st.session_state["demo_access_password"] = password
             st.rerun()
-        st.error("That password did not match the configured demo password.")
+        st.error("That password did not match the current shared demo password.")
     st.stop()
 
 
@@ -44,7 +49,7 @@ demo_access_password = st.sidebar.text_input(
     "Demo access password",
     value=st.session_state.get("demo_access_password", ""),
     type="password",
-    help="Required when the API is protected with DEMO_ACCESS_PASSWORD.",
+    help=PASSWORD_HELP,
 )
 if demo_access_password:
     st.session_state["demo_access_password"] = demo_access_password
@@ -154,9 +159,12 @@ with query_tab:
         else:
             if 200 <= r.status_code < 300:
                 _render_response("Query Response", resp_json)
-            else:
-                st.error(f"{r.status_code} — {resp_json.get('error', {}).get('message')}")
-                st.json(resp_json)
+        else:
+            details = resp_json.get("error", {}).get("details", {})
+            st.error(f"{r.status_code} — {resp_json.get('error', {}).get('message')}")
+            if details.get("how_to_authenticate"):
+                st.caption(details["how_to_authenticate"])
+            st.json(resp_json)
 
 with approvals_tab:
     st.subheader("Approval Workflow")
@@ -187,6 +195,8 @@ with approvals_tab:
                     st.session_state["last_approval_id"] = data["data"]["approval"]["approval_id"]
             else:
                 st.error(f"{r.status_code} — {data.get('error', {}).get('message')}")
+                if data.get("error", {}).get("details", {}).get("how_to_authenticate"):
+                    st.caption(data["error"]["details"]["how_to_authenticate"])
                 st.json(data)
 
     st.markdown("Lookup approval status")
@@ -202,6 +212,8 @@ with approvals_tab:
                 st.json(data.get("data", {}))
             else:
                 st.error(f"{r.status_code} — {data.get('error', {}).get('message')}")
+                if data.get("error", {}).get("details", {}).get("how_to_authenticate"):
+                    st.caption(data["error"]["details"]["how_to_authenticate"])
                 st.json(data)
 
     st.markdown("Submit approval decision (requires ops_manager/admin)")
@@ -228,6 +240,8 @@ with approvals_tab:
                 st.json(data.get("data", {}))
             else:
                 st.error(f"{r.status_code} — {data.get('error', {}).get('message')}")
+                if data.get("error", {}).get("details", {}).get("how_to_authenticate"):
+                    st.caption(data["error"]["details"]["how_to_authenticate"])
                 st.json(data)
 
 with traces_tab:

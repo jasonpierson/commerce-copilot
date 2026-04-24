@@ -90,6 +90,13 @@ def build_demo_access_headers(password: str | None) -> dict[str, str]:
     }
 
 
+def demo_access_help_text() -> str:
+    return (
+        "Use Basic auth with username 'demo' and the shared demo password, "
+        f"or send the {DEMO_PASSWORD_HEADER} header."
+    )
+
+
 def _extract_basic_password(authorization_header: str | None) -> str | None:
     if not authorization_header:
         return None
@@ -129,10 +136,12 @@ def demo_access_denied_response() -> JSONResponse:
             "status": "error",
             "error": {
                 "code": "DEMO_ACCESS_REQUIRED",
-                "message": (
-                    f"Provide the demo password using Basic auth or the {DEMO_PASSWORD_HEADER} header."
-                ),
-                "details": {"header": DEMO_PASSWORD_HEADER},
+                "message": "This hosted demo is password-protected.",
+                "details": {
+                    "header": DEMO_PASSWORD_HEADER,
+                    "how_to_authenticate": demo_access_help_text(),
+                    "rotation_note": "If the shared password changed, refresh your local env and restart the client.",
+                },
             },
         },
     )
