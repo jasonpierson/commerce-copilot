@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -21,6 +22,11 @@ class AuditSink:
     def log_event(self, **payload: Any) -> None:
         if not self.enabled:
             return
+        event = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "stream": "retrieval",
+            **payload,
+        }
         with self.output_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload) + "\n")
-        print(payload)
+            handle.write(json.dumps(event) + "\n")
+        print(json.dumps(event), flush=True)

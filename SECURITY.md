@@ -32,12 +32,19 @@ Use this list before exposing the API behind a public hostname.
 - Review service credentials so the app cannot do more than it needs.
 
 ### 3. Rate Limits
-- Add per-IP and per-user rate limits, especially for `/api/v1/query`.
-- Use tighter limits on mutation routes like:
+- Current baseline:
+  - in-memory limiter for `POST /api/v1/query`
+  - in-memory limiter for:
+    - `POST /api/v1/escalations`
+    - `POST /api/v1/approvals/{approval_id}/decision`
+  - clear `429` responses with `Retry-After`
+- Still recommended next:
+  - move rate limiting to a gateway or shared store before real public traffic
+  - add stronger per-user and per-token controls
+  - add alerting around repeated abuse
+- Tight limits should stay on mutation routes like:
   - `POST /api/v1/escalations`
   - `POST /api/v1/approvals/{approval_id}/decision`
-- Add burst protection plus a rolling-window limit.
-- Return clear `429` responses and log repeated offenders.
 
 ### 4. CORS
 - Keep CORS closed by default.

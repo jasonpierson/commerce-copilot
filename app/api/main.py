@@ -1,15 +1,53 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api.approval_router import router as approval_router
-from app.api.auth import demo_access_denied_response, is_demo_access_allowed
+from app.api.auth import (
+    InMemoryRateLimiter,
+    current_rate_limit_rules,
+    demo_access_denied_response,
+    is_demo_access_allowed,
+    rate_limit_exceeded_response,
+    request_fingerprint,
+)
+from app.api.db import check_connectivity
 from app.api.incident_router import router as incident_router
 from app.api.query_router import router as query_router
+from app.common.config import missing_required_runtime_env
 
 
-PUBLIC_PATHS = {"/health"}
+PUBLIC_PATHS = {"/health", "/ready"}
+rate_limiter = InMemoryRateLimiter()
+
+
+@dataclass(frozen=True, slots=True)
+class ReadinessReport:
+    ready: bool
+    app_env: str
+    missing_env: list[str]
+    db_ok: bool
+    db_error: str | None = None
+
+
+def build_readiness_report() -> ReadinessReport:
+    app_env = os.getenv("APP_ENV", "development").strip().lower()
+    missing_env = missing_required_runtime_env(app_env=app_env)
+    db_ok = False
+    db_error: str | None = None
+    if not missing_env:
+        db_ok, db_error = check_connectivity()
+    return ReadinessReport(
+        ready=not missing_env and db_ok,
+        app_env=app_env,
+        missing_env=missing_env,
+        db_ok=db_ok,
+        db_error=db_error,
+    )
 
 
 def create_app() -> FastAPI:
@@ -37,6 +75,26 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def require_demo_access(request: Request, call_next):
+        for rule in current_rate_limit_rules():
+            if request.method == rule.method and rule.path_pattern.match(request.url.path):
+                fingerprint = request_fingerprint(
+                    path=request.url.path,
+                    method=request.method,
+                    forwarded_for=request.headers.get("X-Forwarded-For"),
+                    client_host=request.client.host if request.client else None,
+                    user_id=request.headers.get("X-User-Id"),
+                )
+                allowed, retry_after = rate_limiter.check(
+                    key=fingerprint,
+                    limit=rule.limit,
+                    window_seconds=rule.window_seconds,
+                )
+                if not allowed:
+                    return rate_limit_exceeded_response(
+                        rule_name=rule.name,
+                        retry_after_seconds=retry_after,
+                    )
+
         if request.url.path not in PUBLIC_PATHS and not is_demo_access_allowed(
             authorization_header=request.headers.get("Authorization"),
             password_header=request.headers.get("X-Demo-Password"),
@@ -48,6 +106,24 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/ready")
+    def ready() -> JSONResponse:
+        report = build_readiness_report()
+        status_code = 200 if report.ready else 503
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "status": "ready" if report.ready else "not_ready",
+                "app_env": report.app_env,
+                "checks": {
+                    "config_ok": not report.missing_env,
+                    "db_ok": report.db_ok,
+                },
+                "missing_env": report.missing_env,
+                "db_error": report.db_error,
+            },
+        )
+
     @app.get("/", include_in_schema=False)
     def root() -> JSONResponse:
         return JSONResponse(
@@ -55,6 +131,7 @@ def create_app() -> FastAPI:
                 "name": "Governed Commerce Operations Copilot API",
                 "docs": "/docs",
                 "health": "/health",
+                "ready": "/ready",
                 "query": "/api/v1/query",
             }
         )

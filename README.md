@@ -48,6 +48,8 @@ What the demo shows:
 
 - authoritative hosted surface:
   - FastAPI API on Koyeb using the repo `Dockerfile`
+- deployment config file:
+  - `koyeb.yaml`
 - Streamlit:
   - local-only reviewer helper
   - not part of the hosted deployment path
@@ -180,8 +182,10 @@ make run-api
 
 Useful commands:
 - `make test`
+- `make test-api`
 - `make eval`
 - `make smoke`
+- `make smoke-remote`
 - `make demo`
 - `make ui`
 - `make inspect-logs`
@@ -251,6 +255,7 @@ Shared response shape:
 
 ### Health
 - `GET /health`
+- `GET /ready`
 
 ### Unified Query
 - `POST /api/v1/query` — see interactive docs at `/docs`
@@ -283,6 +288,19 @@ Current behavior:
 - if headers are present, they override any fallback role/user fields in the JSON body
 - if `DEMO_ACCESS_PASSWORD` is set, all non-`/health` routes require the demo password
 - `/docs` stays usable for reviewers because the API accepts Basic auth
+- `/ready` stays public so the host can verify deployment readiness
+
+### Hosted Review Path
+Use this flow when reviewing a deployed demo:
+- open `<host>/docs`
+- authenticate with:
+  - Basic auth user: `demo`
+  - password: `DEMO_ACCESS_PASSWORD`
+- try these 4 flows:
+  - policy/process query
+  - inventory lookup
+  - incident summary
+  - create + inspect one approval
 
 ## Example Query Behaviors
 
@@ -535,6 +553,7 @@ Notes:
 - `DB_APP_SCHEMA` defaults to `app_private`
 - `DEMO_ACCESS_PASSWORD` enables the demo password gate for API and UI access
 - `APP_ENV`, `APP_HOST`, and `APP_PORT` drive the API startup mode and bind settings
+- `PORT` is honored when the host injects it (for example on Koyeb)
 - `GCOP_API_BASE` points the local Streamlit UI at the API you want to demo
 
 Retrieval tuning is env-driven as well; the retrieval config reads several runtime knobs from environment variables.
@@ -559,6 +578,13 @@ source .env.local
 set +a
 APP_ENV=production APP_HOST=0.0.0.0 APP_PORT=8000 python scripts/run_api.py
 ```
+
+Readiness semantics:
+- `/health`
+  - shallow liveness check
+- `/ready`
+  - required config is present
+  - DB connectivity succeeds
 
 ### Run Ingestion
 ```bash
@@ -770,6 +796,16 @@ If you later deploy this API publicly, add a minimum security envelope before ex
 - a local-only FastAPI process is not reachable just because the repo is public
 - the bigger risk begins when the API is deployed to a public hostname without auth or limits
 
+### Current hosted-demo baseline
+- demo password gate:
+  - all non-`/health`
+  - `/ready` remains public for platform health checks
+- in-app rate limiting:
+  - `POST /api/v1/query`
+  - `POST /api/v1/escalations`
+  - `POST /api/v1/approvals/{approval_id}/decision`
+- persistent local artifact logs plus stdout JSON event logs for hosted platforms
+
 ## Operator Runbook
 
 Use this section for common local and live-safe operator workflows while developing.
@@ -822,6 +858,15 @@ Which approver is the bottleneck?
 ```bash
 source .venv/bin/activate
 python scripts/inspect_logs.py --tail 50
+```
+
+### 3b. Smoke-test a hosted deployment
+```bash
+source .venv/bin/activate
+set -a
+source .env.local
+set +a
+python scripts/smoke_remote_demo.py
 ```
 
 ### 4. Run the local test suite
@@ -936,6 +981,8 @@ If you are new to the repo, start here:
 - `CHANGELOG.md`
 - `docs/architecture.md`
 - `docs/deployment.md`
+- `docs/demo.md`
+- `koyeb.yaml`
 - `app/api/query_service.py`
 - `app/api/approval_service.py`
 - `app/retrieval/service.py`

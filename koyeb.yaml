@@ -1,0 +1,38 @@
+app:
+  name: commerce-ops-copilot
+  notes:
+    - Repository source of truth for the hosted demo settings.
+    - Mirror these values in the Koyeb service configuration when creating or updating the app.
+
+service:
+  name: commerce-ops-copilot-api
+  type: web
+  deployment:
+    method: git
+    builder: docker
+    dockerfile: Dockerfile
+    branch: main
+  instance:
+    plan: free
+  routing:
+    public: true
+    port: 8000
+    protocol: http
+    route: /
+  health_checks:
+    liveness:
+      protocol: http
+      path: /health
+    readiness:
+      protocol: http
+      path: /ready
+  env:
+    plaintext:
+      APP_ENV: production
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8000"
+      DB_APP_SCHEMA: app_private
+    secrets:
+      - OPENAI_API_KEY
+      - SUPABASE_DB_URL
+      - DEMO_ACCESS_PASSWORD

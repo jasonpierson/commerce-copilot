@@ -42,6 +42,7 @@ User / Support Agent
   - retrieval traces -> `artifacts/retrieval_events.jsonl`
   - query traces -> `artifacts/query_events.jsonl`
   - approval traces -> `artifacts/approval_events.jsonl`
+  - hosted runtime also emits the same events to stdout as JSON
 
 ## Governance Boundary
 

@@ -5,6 +5,12 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 ## Unreleased
 
 ### Added
+- `koyeb.yaml` as the repo deployment source of truth for the hosted demo
+- `GET /ready` for config + DB readiness checks alongside `GET /health`
+- lightweight in-memory rate limiting for hosted query and approval mutation routes
+- `scripts/smoke_remote_demo.py` for post-deploy hosted smoke verification
+- `tests/test_deployment_contract.py` for hosted-demo contract coverage
+- `docs/demo.md` as a short review/demo walkthrough
 - Demo password protection for the API and Streamlit UI using `DEMO_ACCESS_PASSWORD`
 - `scripts/inspect_logs.py` for reviewer-friendly inspection of query, approval, and retrieval traces
 - GitHub Actions CI workflow for compile + unit test coverage
@@ -49,6 +55,9 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - `GET /api/v1/operator/dashboard` as a UI-oriented operator dashboard shape
 
 ### Changed
+- `Dockerfile` is now a production-lite non-root immutable runtime image
+- local and hosted logs now share a more consistent JSON event shape, with hosted events emitted to stdout
+- `README.md` and `docs/deployment.md` now describe the concrete Koyeb deployment path, readiness semantics, hosted smoke testing, and review flow
 - `scripts/run_api.py` now respects `APP_ENV`, `APP_HOST`, and `APP_PORT`
 - `Dockerfile` now launches through `scripts/run_api.py`
 - Deployment docs now define Koyeb-hosted API + local-only Streamlit as the authoritative demo path

@@ -13,6 +13,8 @@ router = APIRouter(tags=["incidents"])
 
 @router.get(
     "/incidents/{incident_code}",
+    summary="Get structured incident detail and timeline",
+    description="Returns the incident record and timeline events for a known incident code such as `INC-1091`.",
     response_model=IncidentDetailResponse,
     responses={
         404: {"model": ErrorResponse},

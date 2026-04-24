@@ -1,34 +1,46 @@
 # syntax=docker/dockerfile:1
+
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PIP_NO_CACHE_DIR=on
+
+WORKDIR /build
+
+COPY pyproject.toml README.md /build/
+COPY app /build/app
+
+RUN python -m pip install --upgrade pip build && \
+    python -m build --wheel --outdir /dist
+
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PIP_NO_CACHE_DIR=on \
+    APP_ENV=production \
     APP_HOST=0.0.0.0 \
-    APP_PORT=8000 \
-    APP_ENV=production
+    APP_PORT=8000
 
 WORKDIR /app
 
-# System deps (optional, keep minimal)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+RUN adduser --disabled-password --gecos "" --home /app appuser
 
-# Copy only project metadata first for layer caching
-COPY pyproject.toml README.md /app/
-
-# Install
+COPY --from=builder /dist/*.whl /tmp/package.whl
 RUN python -m pip install --upgrade pip && \
-    pip install -e .
+    python -m pip install /tmp/package.whl && \
+    rm -f /tmp/package.whl
 
-# Copy source
-COPY app /app/app
-COPY scripts /app/scripts
-COPY docs /app/docs
+RUN mkdir -p /app/scripts /app/artifacts && chown -R appuser:appuser /app
+
+COPY --chown=appuser:appuser scripts/run_api.py /app/scripts/run_api.py
+
+USER appuser
 
 EXPOSE 8000
 
-# Use uvicorn directly so we can bind 0.0.0.0
 CMD ["python", "scripts/run_api.py"]
