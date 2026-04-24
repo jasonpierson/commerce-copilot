@@ -159,12 +159,12 @@ with query_tab:
         else:
             if 200 <= r.status_code < 300:
                 _render_response("Query Response", resp_json)
-        else:
-            details = resp_json.get("error", {}).get("details", {})
-            st.error(f"{r.status_code} — {resp_json.get('error', {}).get('message')}")
-            if details.get("how_to_authenticate"):
-                st.caption(details["how_to_authenticate"])
-            st.json(resp_json)
+            else:
+                details = resp_json.get("error", {}).get("details", {})
+                st.error(f"{r.status_code} — {resp_json.get('error', {}).get('message')}")
+                if details.get("how_to_authenticate"):
+                    st.caption(details["how_to_authenticate"])
+                st.json(resp_json)
 
 with approvals_tab:
     st.subheader("Approval Workflow")
