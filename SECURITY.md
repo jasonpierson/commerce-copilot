@@ -24,6 +24,7 @@ This project is currently optimized for local development and controlled smoke t
 
 - how reviewers get access:
   - maintainer shares the live password directly
+  - reviewers can request access from the maintainer using the contact path in `README.md`
 - what the repo contains:
   - the hosted URL
   - the auth flow

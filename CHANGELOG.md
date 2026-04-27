@@ -5,6 +5,10 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 ## Unreleased
 
 ### Added
+- `docs/maintainer-runbook.md` for demo password rotation, Koyeb/GitHub secret upkeep, redeploy steps, smoke validation, and log inspection
+- `docs/api-review/README.md`
+- `docs/api-review/curl-examples.md`
+- `docs/api-review/postman_collection.json`
 - `GET /version` for deployed build metadata:
   - app version
   - git SHA
@@ -66,6 +70,9 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - `GET /api/v1/operator/dashboard` as a UI-oriented operator dashboard shape
 
 ### Changed
+- top-of-README reviewer guidance now includes status, access, terminal-first review, and maintainer contact flow
+- release docs now point to terminal and machine-readable API review assets
+- deployment docs now explain how to keep `/version` meaningful in Koyeb by updating build metadata env vars
 - core API routes now return `X-Request-Id` response headers alongside the existing response-body field
 - reviewer docs now explain that demo access is shared out-of-band and that the password is never committed
 - deployment docs now describe `/version`, hosted smoke workflow secrets, and the optional custom-domain path

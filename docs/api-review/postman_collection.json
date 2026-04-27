@@ -1,0 +1,137 @@
+{
+  "info": {
+    "name": "CommerceOpsCopilot Hosted Demo Review",
+    "_postman_id": "9d14e5b8-3b0d-43c9-9ed7-1b3bff2a9f6e",
+    "description": "Hosted review collection for the CommerceOpsCopilot demo. Fill the collection variables before sending requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "hosted_url",
+      "value": "<HOSTED_URL>"
+    },
+    {
+      "key": "demo_password",
+      "value": "<DEMO_PASSWORD>"
+    },
+    {
+      "key": "approval_id",
+      "value": "<APPROVAL_ID>"
+    }
+  ],
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {
+        "key": "username",
+        "value": "demo",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "{{demo_password}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Version",
+      "request": {
+        "method": "GET",
+        "url": "{{hosted_url}}/version"
+      }
+    },
+    {
+      "name": "Policy Query",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-User-Id", "value": "demo-support-001" },
+          { "key": "X-User-Role", "value": "support_analyst" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"message\":\"What is the return process for damaged products?\"}"
+        },
+        "url": "{{hosted_url}}/api/v1/query"
+      }
+    },
+    {
+      "name": "Inventory Lookup",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-User-Id", "value": "demo-support-001" },
+          { "key": "X-User-Role", "value": "support_analyst" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"message\":\"Check inventory for the Phantom X shoes.\"}"
+        },
+        "url": "{{hosted_url}}/api/v1/query"
+      }
+    },
+    {
+      "name": "Incident Summary",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-User-Id", "value": "demo-engineering-support-001" },
+          { "key": "X-User-Role", "value": "engineering_support" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"message\":\"Summarize incident INC-1091 and tell me the likely customer impact.\"}"
+        },
+        "url": "{{hosted_url}}/api/v1/query"
+      }
+    },
+    {
+      "name": "Create Escalation",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-User-Id", "value": "demo-support-001" },
+          { "key": "X-User-Role", "value": "support_analyst" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"incident_code\":\"INC-1091\",\"escalation_reason\":\"Reviewer demo escalation.\",\"proposed_priority\":\"critical\",\"draft_summary\":\"Disposable reviewer approval request.\"}"
+        },
+        "url": "{{hosted_url}}/api/v1/escalations"
+      }
+    },
+    {
+      "name": "Approval Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "demo-ops-manager-001" },
+          { "key": "X-User-Role", "value": "ops_manager" }
+        ],
+        "url": "{{hosted_url}}/api/v1/approvals/{{approval_id}}"
+      }
+    },
+    {
+      "name": "Approval Decision",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-User-Id", "value": "demo-ops-manager-001" },
+          { "key": "X-User-Role", "value": "ops_manager" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"decision\":\"rejected\",\"decision_notes\":\"Disposable reviewer approval request rejected after validation.\"}"
+        },
+        "url": "{{hosted_url}}/api/v1/approvals/{{approval_id}}/decision"
+      }
+    }
+  ]
+}

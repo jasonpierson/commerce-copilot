@@ -9,6 +9,19 @@ Governed Commerce Operations Copilot is a live, password-protected hosted demo o
 
 Review this project in under 2 minutes:
 
+- status:
+  - hosted demo:
+    - live
+  - last hosted smoke:
+    - passed on `2026-04-24`
+  - release:
+    - `v0.1.0`
+  - auth:
+    - password-protected
+  - data:
+    - seeded / demo-only
+  - deployment target:
+    - Koyeb
 - live hosted demo:
   - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
 - what is hosted:
@@ -33,6 +46,10 @@ Review this project in under 2 minutes:
   - the repo explains the access model
   - the password value is never committed
   - reviewers receive access directly from the maintainer
+- how to request demo access:
+  - contact the maintainer
+  - receive the shared password out-of-band
+  - use the repo-hosted URL plus the maintainer-shared password
 - local reviewer UI:
   - `make ui`
 - real vs demo-only:
@@ -44,6 +61,11 @@ For deployment hardening guidance, see [`SECURITY.md`](SECURITY.md).
 For the hosted release runbook, see [`docs/release-checklist.md`](docs/release-checklist.md).
 
 For the hosted-demo milestone note, see [`docs/releases/hosted-demo-v1.md`](docs/releases/hosted-demo-v1.md).
+
+For terminal-first review assets, see:
+
+- [`docs/api-review/README.md`](docs/api-review/README.md)
+- [`docs/api-review/curl-examples.md`](docs/api-review/curl-examples.md)
 
 Governed Commerce Operations Copilot is a Python/FastAPI prototype for a support-facing copilot that blends:
 
@@ -124,6 +146,57 @@ What the demo shows:
 - incident summary with retrieval + structured context
 - escalation guidance
 - approval request, status, decision, and audit trail
+
+## Try It From Terminal
+
+Set reusable shell vars first:
+
+```bash
+export HOSTED_URL="https://harsh-juieta-jasons-org-14a2695f.koyeb.app"
+export DEMO_PASSWORD="<DEMO_PASSWORD>"
+```
+
+Check the deployed build:
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  "${HOSTED_URL}/version"
+```
+
+Ask a policy question:
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: demo-support-001" \
+  -H "X-User-Role: support_analyst" \
+  -d '{"message":"What is the return process for damaged products?"}' \
+  "${HOSTED_URL}/api/v1/query"
+```
+
+Run an inventory lookup:
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: demo-support-001" \
+  -H "X-User-Role: support_analyst" \
+  -d '{"message":"Check inventory for the Phantom X shoes."}' \
+  "${HOSTED_URL}/api/v1/query"
+```
+
+Create an escalation request:
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: demo-support-001" \
+  -H "X-User-Role: support_analyst" \
+  -d '{"incident_code":"INC-1091","escalation_reason":"Reviewer demo escalation.","proposed_priority":"critical","draft_summary":"Disposable reviewer approval request."}' \
+  "${HOSTED_URL}/api/v1/escalations"
+```
+
+Use `X-Request-Id` from the response headers to correlate hosted logs.
 
 ## Reviewer Path
 

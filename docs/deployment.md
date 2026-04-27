@@ -48,6 +48,22 @@
 
 Use these so `/version` can tell you exactly which deploy Koyeb is serving.
 
+Recommended values per deploy:
+
+- `APP_VERSION`
+  - release tag or package version such as `0.1.0`
+- `GIT_SHA`
+  - short commit SHA for the deployed commit
+- `BUILD_TIMESTAMP`
+  - UTC ISO-8601 timestamp for the deploy or image build
+
+Practical Koyeb pattern:
+
+- update these env vars when you cut a new hosted release
+- redeploy immediately after updating them
+- confirm the result at:
+  - `/version`
+
 ## Health Model
 
 - `GET /health`

@@ -44,6 +44,9 @@
   - `/version`
 - password:
   - shared out-of-band by the maintainer
+- maintainer review path:
+  - terminal examples in `docs/api-review/curl-examples.md`
+  - Postman collection in `docs/api-review/postman_collection.json`
 
 ## What The Screenshots Show
 
@@ -55,6 +58,13 @@
   - governed approval response shape
 - `docs/screenshots/streamlit-ui.png`
   - local reviewer UI against the same backend
+
+## Hosted Trust Signals
+
+- live hosted URL is documented in the repo
+- `X-Request-Id` is returned on core API routes
+- hosted smoke automation exists in GitHub Actions
+- `/version` exposes deployed build metadata
 
 ## Future Work
 

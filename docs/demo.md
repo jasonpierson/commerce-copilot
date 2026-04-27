@@ -71,6 +71,72 @@
   - hosted URL from the repo
   - password from the maintainer
   - request tracing through `X-Request-Id`
+- how to request access:
+  - contact the maintainer
+  - receive the current demo password directly
+  - no secret value is ever committed to the repo
+
+## Try It From Terminal
+
+Set:
+
+```bash
+export HOSTED_URL="<HOSTED_URL>"
+export DEMO_PASSWORD="<DEMO_PASSWORD>"
+```
+
+Suggested path:
+
+- 1. version
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  "${HOSTED_URL}/version"
+```
+
+- 2. policy query
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: demo-support-001" \
+  -H "X-User-Role: support_analyst" \
+  -d '{"message":"What is the return process for damaged products?"}' \
+  "${HOSTED_URL}/api/v1/query"
+```
+
+- 3. inventory lookup
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: demo-support-001" \
+  -H "X-User-Role: support_analyst" \
+  -d '{"message":"Check inventory for the Phantom X shoes."}' \
+  "${HOSTED_URL}/api/v1/query"
+```
+
+- 4. escalation create
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  -H "Content-Type: application/json" \
+  -H "X-User-Id: demo-support-001" \
+  -H "X-User-Role: support_analyst" \
+  -d '{"incident_code":"INC-1091","escalation_reason":"Reviewer demo escalation.","proposed_priority":"critical","draft_summary":"Disposable reviewer approval request."}' \
+  "${HOSTED_URL}/api/v1/escalations"
+```
+
+- 5. approval status
+
+```bash
+curl -u "demo:${DEMO_PASSWORD}" \
+  -H "X-User-Id: demo-ops-manager-001" \
+  -H "X-User-Role: ops_manager" \
+  "${HOSTED_URL}/api/v1/approvals/<APPROVAL_ID>"
+```
+
+Capture `X-Request-Id` from responses when you want to inspect logs.
 
 ## Manual Hosted Reviewer Pass
 
