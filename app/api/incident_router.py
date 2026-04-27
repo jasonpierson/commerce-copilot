@@ -2,13 +2,25 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.incident_service import IncidentService
 from app.api.schemas import ErrorDetail, ErrorResponse, IncidentDetailData, IncidentDetailResponse, QueryResponseMeta
 
 router = APIRouter(tags=["incidents"])
+
+
+def _set_request_id_header(response: Response, request_id: str) -> None:
+    response.headers["X-Request-Id"] = request_id
+
+
+def _error_json_response(*, request_id: str, status_code: int, error: ErrorResponse) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=error.model_dump(),
+        headers={"X-Request-Id": request_id},
+    )
 
 
 @router.get(
@@ -21,8 +33,9 @@ router = APIRouter(tags=["incidents"])
         502: {"model": ErrorResponse},
     },
 )
-def get_incident_detail(incident_code: str) -> IncidentDetailResponse | JSONResponse:
+def get_incident_detail(incident_code: str, response: Response) -> IncidentDetailResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     service = IncidentService.from_env()
 
     try:
@@ -35,7 +48,11 @@ def get_incident_detail(incident_code: str) -> IncidentDetailResponse | JSONResp
                     message=f"Incident {incident_code.upper()} was not found.",
                 ),
             )
-            return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=error.model_dump())
+            return _error_json_response(
+                request_id=request_id,
+                status_code=status.HTTP_404_NOT_FOUND,
+                error=error,
+            )
 
         timeline = service.get_incident_timeline(incident.incident_id)
         return IncidentDetailResponse(
@@ -56,7 +73,8 @@ def get_incident_detail(incident_code: str) -> IncidentDetailResponse | JSONResp
                 details={"cause": type(exc).__name__},
             ),
         )
-        return JSONResponse(
+        return _error_json_response(
+            request_id=request_id,
             status_code=status.HTTP_502_BAD_GATEWAY,
-            content=error.model_dump(),
+            error=error,
         )

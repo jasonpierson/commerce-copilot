@@ -5,6 +5,13 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 ## Unreleased
 
 ### Added
+- `GET /version` for deployed build metadata:
+  - app version
+  - git SHA
+  - build timestamp
+  - `APP_ENV`
+- `.github/workflows/hosted-smoke.yml` for manual and scheduled live hosted smoke checks
+- `docs/releases/hosted-demo-v1.md` as the shareable hosted-demo milestone note
 - `docs/release-checklist.md` for low-stress hosted demo updates
 - `scripts/verify_env.py` for startup/readiness env checks before deploy
 - richer root landing response for hosted reviewers
@@ -59,6 +66,9 @@ This changelog tracks project evolution from the first commit, `c2ea3da` (`initi
 - `GET /api/v1/operator/dashboard` as a UI-oriented operator dashboard shape
 
 ### Changed
+- core API routes now return `X-Request-Id` response headers alongside the existing response-body field
+- reviewer docs now explain that demo access is shared out-of-band and that the password is never committed
+- deployment docs now describe `/version`, hosted smoke workflow secrets, and the optional custom-domain path
 - docs now separate more explicitly:
   - demo password gate vs real auth
   - mock headers vs real identity

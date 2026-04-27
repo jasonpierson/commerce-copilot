@@ -5,6 +5,8 @@ This project is currently optimized for local development and controlled smoke t
 ## Current Posture
 
 - Secrets are expected to live in `.env.local`, which should stay out of git.
+- Reviewers receive the hosted demo password out-of-band from the maintainer.
+- The repo documents `DEMO_ACCESS_PASSWORD` as an env var name, not as the secret value itself.
 - The local FastAPI server is only reachable if you run it on a machine and expose a port.
 - Demo seed data is synthetic, but approval smoke tests can create live rows in the connected database.
 - Application tables live in the private `app_private` schema rather than `public`.
@@ -17,6 +19,17 @@ This project is currently optimized for local development and controlled smoke t
   - restart or redeploy the API
   - tell reviewers to refresh their local UI/client config
 - The recommended public-review shape is API hosted, Streamlit local-only.
+
+## Demo Access Distribution
+
+- how reviewers get access:
+  - maintainer shares the live password directly
+- what the repo contains:
+  - the hosted URL
+  - the auth flow
+  - no committed password value
+- what the repo does not contain:
+  - the current live demo password
 
 ## Deployment-Hardening Checklist
 

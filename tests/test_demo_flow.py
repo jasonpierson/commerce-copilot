@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import os
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -149,6 +150,16 @@ class FakeIncidentService:
 
 class GoldenPathDemoTests(TestCase):
     client = TestClient(app)
+
+    def setUp(self) -> None:
+        self._original_demo_access_password = os.environ.get("DEMO_ACCESS_PASSWORD")
+        os.environ.pop("DEMO_ACCESS_PASSWORD", None)
+
+    def tearDown(self) -> None:
+        if self._original_demo_access_password is None:
+            os.environ.pop("DEMO_ACCESS_PASSWORD", None)
+        else:
+            os.environ["DEMO_ACCESS_PASSWORD"] = self._original_demo_access_password
 
     @patch("app.api.query_service.build_retrieval_service", return_value=FakeRetrievalService())
     def test_end_to_end_demo_flow(self, _rt):

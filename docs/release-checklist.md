@@ -29,6 +29,7 @@
 - verify:
   - `/health`
   - `/ready`
+  - `/version`
   - password gate rejects missing auth
   - `/docs` loads with the shared password
   - one approval flow works end to end

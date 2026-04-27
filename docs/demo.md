@@ -28,12 +28,13 @@
    - `/docs`
    - `/health`
    - `/ready`
+   - `/version`
 3. Open the hosted `/docs`.
 4. Authenticate with:
    - username:
      - `demo`
    - password:
-     - the shared `DEMO_ACCESS_PASSWORD`
+     - the maintainer-shared demo password
 5. Try these flows:
    - `POST /api/v1/query`
      - policy question
@@ -45,6 +46,9 @@
      - create approval
    - `GET /api/v1/approvals/{approval_id}`
    - `POST /api/v1/approvals/{approval_id}/decision`
+6. Capture:
+   - `X-Request-Id`
+   - use it for log tracing if you want to inspect the hosted flow
 
 ## Live Hosted Validation Notes
 
@@ -58,6 +62,15 @@
   - the hosted smoke path succeeds end to end
 - practical note:
   - the first hosted smoke run may need a longer timeout during cold start
+
+## Reviewer Access Model
+
+- the password is shared out-of-band by the maintainer
+- the repo documents the gate but never stores the secret value
+- reviewers should expect:
+  - hosted URL from the repo
+  - password from the maintainer
+  - request tracing through `X-Request-Id`
 
 ## Manual Hosted Reviewer Pass
 

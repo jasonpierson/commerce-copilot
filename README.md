@@ -11,9 +11,16 @@ Review this project in under 2 minutes:
 
 - live hosted demo:
   - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
+- what is hosted:
+  - FastAPI API only
+  - interactive docs at `/docs`
+  - build metadata at `/version`
 - click first:
   - `/`
   - `/docs`
+- best screenshots:
+  - `docs/screenshots/openapi-overview.png`
+  - `docs/screenshots/approval-flow.png`
 - best reviewer flow:
   - read the root landing page
   - open `/docs`
@@ -21,7 +28,11 @@ Review this project in under 2 minutes:
   - run one approval flow
 - hosted auth:
   - Basic auth username: `demo`
-  - password: `DEMO_ACCESS_PASSWORD`
+  - password shared out-of-band by the maintainer
+- how access works:
+  - the repo explains the access model
+  - the password value is never committed
+  - reviewers receive access directly from the maintainer
 - local reviewer UI:
   - `make ui`
 - real vs demo-only:
@@ -31,6 +42,8 @@ Review this project in under 2 minutes:
 For deployment hardening guidance, see [`SECURITY.md`](SECURITY.md).
 
 For the hosted release runbook, see [`docs/release-checklist.md`](docs/release-checklist.md).
+
+For the hosted-demo milestone note, see [`docs/releases/hosted-demo-v1.md`](docs/releases/hosted-demo-v1.md).
 
 Governed Commerce Operations Copilot is a Python/FastAPI prototype for a support-facing copilot that blends:
 
@@ -66,6 +79,19 @@ Flow:
 Approval flow example:
 ![Approval flow example](docs/screenshots/approval-flow.png)
 
+## How Demo Access Works
+
+- the hosted API is private-by-password for reviewers
+- the password is shared out-of-band by the maintainer
+- the repo never contains the password value
+- the clean hosted review path is:
+  - `/`
+  - `/docs`
+  - `/version`
+- for curl or debugging:
+  - capture the `X-Request-Id` response header
+  - correlate it with hosted logs or local trace inspection
+
 ## 2-Minute Demo
 
 ```bash
@@ -99,6 +125,19 @@ What the demo shows:
 - escalation guidance
 - approval request, status, decision, and audit trail
 
+## Reviewer Path
+
+- 1:
+  - open the hosted URL
+- 2:
+  - check `/version` to confirm the deployed build
+- 3:
+  - open `/docs`
+- 4:
+  - authenticate with the maintainer-shared password
+- 5:
+  - run one policy query and one approval flow
+
 ## Hosting Position
 
 - authoritative hosted surface:
@@ -115,7 +154,11 @@ What the demo shows:
   - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
 - hosted review auth:
   - Basic auth username: `demo`
-  - password: `DEMO_ACCESS_PASSWORD`
+  - password shared out-of-band by the maintainer
+- release/build verification:
+  - `GET /version`
+- hosted regression check:
+  - `.github/workflows/hosted-smoke.yml`
 
 ## Current Status
 
@@ -164,6 +207,7 @@ What the demo shows:
 - real OpenAI embeddings for ingestion and retrieval
 - real structured reads/writes against the connected demo database
 - persistent JSONL request tracing
+- response-level `X-Request-Id` headers on core API routes
 - seeded approval, inventory, and incident demo paths
 
 ### Mock / Demo-Only

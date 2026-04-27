@@ -40,6 +40,14 @@
   - `SUPABASE_DB_URL`
   - `DEMO_ACCESS_PASSWORD`
 
+## Optional Build Metadata Env
+
+- `APP_VERSION`
+- `GIT_SHA`
+- `BUILD_TIMESTAMP`
+
+Use these so `/version` can tell you exactly which deploy Koyeb is serving.
+
 ## Health Model
 
 - `GET /health`
@@ -49,6 +57,9 @@
   - readiness
   - required config present
   - DB connectivity succeeds
+- `GET /version`
+  - deployed build metadata
+  - app version, git SHA, build timestamp, and `APP_ENV`
 
 Recommended Koyeb health check:
 - protocol:
@@ -72,7 +83,7 @@ Reference docs used:
   - `https://harsh-juieta-jasons-org-14a2695f.koyeb.app/`
 - auth:
   - Basic auth username: `demo`
-  - password: `DEMO_ACCESS_PASSWORD`
+  - password shared out-of-band by the maintainer
 
 ### Option A — Control panel
 
@@ -91,6 +102,7 @@ Reference docs used:
    - `DEMO_ACCESS_PASSWORD`
 6. Deploy.
 7. After the deployment turns healthy, run the remote smoke script.
+8. Verify `/version` so you know which build Koyeb actually deployed.
 
 ## Post-Deploy Validation Checklist
 
@@ -101,6 +113,8 @@ Reference docs used:
 - confirm password gate:
   - `POST /api/v1/query` without password -> `401`
   - same request with password -> `200`
+- confirm build metadata:
+  - `GET /version` -> `200`
 - run:
   - `python scripts/smoke_remote_demo.py`
 - inspect logs by `request_id`
@@ -214,6 +228,27 @@ Convenience target for the live deployment:
 ```bash
 make smoke-remote-live
 ```
+
+## Scheduled Hosted Smoke
+
+- workflow:
+  - `.github/workflows/hosted-smoke.yml`
+- triggers:
+  - `workflow_dispatch`
+  - weekday schedule
+- required GitHub Actions secrets:
+  - `GCOP_API_BASE`
+  - `DEMO_ACCESS_PASSWORD`
+- safety:
+  - the workflow uses `--skip-approval-flow`
+  - the shared password is never printed in logs
+
+## Optional Custom Domain
+
+- current state:
+  - the Koyeb URL is acceptable for the hosted demo
+- later option:
+  - add a custom subdomain only if you actually plan to keep the demo live long-term
 
 ## Debugging A Bad Hosted Response
 

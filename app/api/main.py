@@ -19,10 +19,10 @@ from app.api.auth import (
 from app.api.db import check_connectivity
 from app.api.incident_router import router as incident_router
 from app.api.query_router import router as query_router
-from app.common.config import missing_required_runtime_env
+from app.common.config import APP_NAME, get_build_metadata, missing_required_runtime_env
 
 
-PUBLIC_PATHS = {"/health", "/ready"}
+PUBLIC_PATHS = {"/", "/health", "/ready", "/version"}
 rate_limiter = InMemoryRateLimiter()
 
 
@@ -53,8 +53,8 @@ def build_readiness_report() -> ReadinessReport:
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Governed Commerce Operations Copilot API",
-        version="0.1.0",
+        title=APP_NAME,
+        version=get_build_metadata().app_version,
         description=(
             "Backend slice for a governed operations copilot: retrieval-backed policy/process Q&A, "
             "structured incident/inventory reads, and an approval workflow with auditability."
@@ -125,10 +125,22 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.get("/version")
+    def version() -> dict[str, str]:
+        metadata = get_build_metadata()
+        return {
+            "app_name": metadata.app_name,
+            "app_version": metadata.app_version,
+            "git_sha": metadata.git_sha,
+            "build_timestamp": metadata.build_timestamp,
+            "app_env": metadata.app_env,
+        }
+
     @app.get("/", include_in_schema=False, response_model=None)
     def root(request: Request) -> JSONResponse | HTMLResponse:
+        metadata = get_build_metadata()
         payload = {
-            "name": "Governed Commerce Operations Copilot API",
+            "name": metadata.app_name,
             "description": (
                 "Private hosted demo for governed operations support: retrieval-backed guidance, "
                 "structured incident/inventory answers, and approval-gated escalation workflows."
@@ -137,10 +149,17 @@ def create_app() -> FastAPI:
                 {"label": "Open interactive API docs", "href": "/docs"},
                 {"label": "Check liveness", "href": "/health"},
                 {"label": "Check readiness", "href": "/ready"},
+                {"label": "Check deployed version metadata", "href": "/version"},
             ],
             "auth": {
                 "protected_routes": "All routes except /health and /ready when DEMO_ACCESS_PASSWORD is set.",
                 "how_to_authenticate": demo_access_help_text(),
+            },
+            "build": {
+                "app_version": metadata.app_version,
+                "git_sha": metadata.git_sha,
+                "build_timestamp": metadata.build_timestamp,
+                "app_env": metadata.app_env,
             },
             "reviewer_notes": {
                 "streamlit": "Streamlit is a local-only reviewer companion and is not hosted on this URL.",
@@ -162,6 +181,13 @@ def create_app() -> FastAPI:
                 <h2>Authentication</h2>
                 <p>{payload['auth']['protected_routes']}</p>
                 <p>{payload['auth']['how_to_authenticate']}</p>
+                <h2>Build metadata</h2>
+                <ul>
+                  <li>Version: {payload['build']['app_version']}</li>
+                  <li>Git SHA: {payload['build']['git_sha']}</li>
+                  <li>Built at: {payload['build']['build_timestamp']}</li>
+                  <li>Environment: {payload['build']['app_env']}</li>
+                </ul>
                 <h2>Reviewer notes</h2>
                 <p>{payload['reviewer_notes']['streamlit']}</p>
               </body>

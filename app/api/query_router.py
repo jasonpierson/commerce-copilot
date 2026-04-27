@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Header, status
+from fastapi import APIRouter, Header, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.auth import resolve_demo_principal
@@ -11,6 +11,18 @@ from app.api.schemas import ErrorDetail, ErrorResponse, QueryRequest, QueryRespo
 from app.retrieval.exceptions import RetrievalError
 
 router = APIRouter(tags=["query"])
+
+
+def _set_request_id_header(response: Response, request_id: str) -> None:
+    response.headers["X-Request-Id"] = request_id
+
+
+def _error_json_response(*, request_id: str, status_code: int, error: ErrorResponse) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=error.model_dump(),
+        headers={"X-Request-Id": request_id},
+    )
 
 
 @router.post(
@@ -28,10 +40,12 @@ router = APIRouter(tags=["query"])
 )
 def query(
     request: QueryRequest,
+    response: Response,
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     x_user_role: SupportedUserRole | None = Header(default=None, alias="X-User-Role"),
 ) -> QueryResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     service = QueryService()
     principal = resolve_demo_principal(
         header_user_id=x_user_id,
@@ -54,10 +68,7 @@ def query(
                 details={"route_type": exc.route_type},
             ),
         )
-        return JSONResponse(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            content=error.model_dump(),
-        )
+        return _error_json_response(request_id=request_id, status_code=status.HTTP_501_NOT_IMPLEMENTED, error=error)
     except RetrievalError as exc:
         error = ErrorResponse(
             request_id=request_id,
@@ -67,10 +78,7 @@ def query(
                 details={"cause": str(exc)},
             ),
         )
-        return JSONResponse(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            content=error.model_dump(),
-        )
+        return _error_json_response(request_id=request_id, status_code=status.HTTP_502_BAD_GATEWAY, error=error)
     except Exception as exc:
         error = ErrorResponse(
             request_id=request_id,
@@ -80,7 +88,4 @@ def query(
                 details={"cause": type(exc).__name__},
             ),
         )
-        return JSONResponse(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            content=error.model_dump(),
-        )
+        return _error_json_response(request_id=request_id, status_code=status.HTTP_502_BAD_GATEWAY, error=error)

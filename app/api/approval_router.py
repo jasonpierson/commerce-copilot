@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Header, Query, status
+from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.auth import resolve_demo_principal
@@ -41,6 +41,10 @@ from app.api.schemas import (
 router = APIRouter(tags=["approvals"])
 
 
+def _set_request_id_header(response: Response, request_id: str) -> None:
+    response.headers["X-Request-Id"] = request_id
+
+
 def _error_response(
     *,
     request_id: str,
@@ -53,7 +57,11 @@ def _error_response(
         request_id=request_id,
         error=ErrorDetail(code=code, message=message, details=details or {}),
     )
-    return JSONResponse(status_code=status_code, content=error.model_dump())
+    return JSONResponse(
+        status_code=status_code,
+        content=error.model_dump(),
+        headers={"X-Request-Id": request_id},
+    )
 
 
 @router.post(
@@ -72,10 +80,12 @@ def _error_response(
 )
 def create_incident_escalation(
     request: CreateEscalationRequest,
+    response: Response,
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     x_user_role: SupportedUserRole | None = Header(default=None, alias="X-User-Role"),
 ) -> ApprovalRequestResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     principal = resolve_demo_principal(
         header_user_id=x_user_id,
         header_user_role=x_user_role,
@@ -147,6 +157,7 @@ def create_incident_escalation(
     },
 )
 def list_approvals(
+    response: Response,
     approval_status: str | None = Query(default=None, alias="status", pattern="^(pending|approved|rejected)$"),
     incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
     requester: str | None = Query(default=None),
@@ -156,6 +167,7 @@ def list_approvals(
     sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
 ) -> ApprovalListResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     try:
         approvals, total_count = ApprovalService.from_env().list_approvals(
             status=approval_status,
@@ -208,11 +220,13 @@ def list_approvals(
     },
 )
 def get_approval_dashboard(
+    response: Response,
     incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
     requester: str | None = Query(default=None),
     page_size_per_bucket: int = Query(default=5, ge=1, le=25),
 ) -> ApprovalDashboardResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     try:
         buckets, metrics = ApprovalService.from_env().get_approval_dashboard(
             incident_code=incident_code,
@@ -256,11 +270,13 @@ def get_approval_dashboard(
     },
 )
 def get_approval_dashboard_summary(
+    response: Response,
     incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
     requester: str | None = Query(default=None),
     min_pending_age_minutes: int | None = Query(default=None, ge=0, le=100000),
 ) -> ApprovalDashboardSummaryResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     try:
         metrics, top_risks = ApprovalService.from_env().get_approval_dashboard_summary(
             incident_code=incident_code,
@@ -312,12 +328,14 @@ def get_approval_dashboard_summary(
     },
 )
 def get_operator_dashboard(
+    response: Response,
     incident_code: str | None = Query(default=None, pattern="^INC-\\d{3,}$"),
     requester: str | None = Query(default=None),
     min_pending_age_minutes: int | None = Query(default=None, ge=0, le=100000),
     page_size_per_bucket: int = Query(default=5, ge=1, le=25),
 ) -> OperatorDashboardResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     try:
         service = ApprovalService.from_env()
         buckets, metrics = service.get_approval_dashboard(
@@ -402,8 +420,9 @@ def get_operator_dashboard(
         502: {"model": ErrorResponse},
     },
 )
-def get_approval_status(approval_id: str) -> ApprovalStatusResponse | JSONResponse:
+def get_approval_status(approval_id: str, response: Response) -> ApprovalStatusResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     try:
         approval = ApprovalService.from_env().get_approval_status(approval_id)
         return ApprovalStatusResponse(
@@ -444,9 +463,11 @@ def get_approval_status(approval_id: str) -> ApprovalStatusResponse | JSONRespon
 )
 def get_approval_audit(
     approval_id: str,
+    response: Response,
     event_type: str | None = Query(default=None, pattern="^(approval_requested|approval_decided)$"),
 ) -> ApprovalAuditResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     service = ApprovalService.from_env()
     try:
         approval = service.get_approval_status(approval_id)
@@ -493,10 +514,12 @@ def get_approval_audit(
 def decide_approval(
     approval_id: str,
     request: ApprovalDecisionRequest,
+    response: Response,
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     x_user_role: SupportedUserRole | None = Header(default=None, alias="X-User-Role"),
 ) -> ApprovalDecisionResponse | JSONResponse:
     request_id = f"req_{uuid4().hex[:12]}"
+    _set_request_id_header(response, request_id)
     principal = resolve_demo_principal(
         header_user_id=x_user_id,
         header_user_role=x_user_role,

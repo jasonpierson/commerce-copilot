@@ -42,14 +42,24 @@ def ensure_ok(response: requests.Response, label: str) -> dict[str, Any]:
     return payload
 
 
-def post_json(base_url: str, path: str, payload: dict[str, Any], headers: dict[str, str], timeout: int) -> dict[str, Any]:
+def response_request_id(response: requests.Response) -> str:
+    return response.headers.get("X-Request-Id", "missing")
+
+
+def post_json(
+    base_url: str,
+    path: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+    timeout: int,
+) -> tuple[dict[str, Any], str]:
     response = requests.post(f"{base_url.rstrip('/')}{path}", json=payload, headers=headers, timeout=timeout)
-    return ensure_ok(response, path)
+    return ensure_ok(response, path), response_request_id(response)
 
 
-def get_json(base_url: str, path: str, headers: dict[str, str], timeout: int) -> dict[str, Any]:
+def get_json(base_url: str, path: str, headers: dict[str, str], timeout: int) -> tuple[dict[str, Any], str]:
     response = requests.get(f"{base_url.rstrip('/')}{path}", headers=headers, timeout=timeout)
-    return ensure_ok(response, path)
+    return ensure_ok(response, path), response_request_id(response)
 
 
 def main() -> int:
@@ -77,14 +87,25 @@ def main() -> int:
     checks: list[tuple[str, bool, str]] = []
 
     try:
-        root = get_json(args.base_url, "/", headers=support_headers, timeout=args.timeout)
-        checks.append(("root", "/docs" in [item["href"] for item in root.get("next_steps", [])], "root landing"))
+        root, root_request_id = get_json(args.base_url, "/", headers=support_headers, timeout=args.timeout)
+        checks.append((
+            "root",
+            "/docs" in [item["href"] for item in root.get("next_steps", [])],
+            f"root landing; request_id={root_request_id}",
+        ))
 
-        health = get_json(args.base_url, "/health", headers={}, timeout=args.timeout)
+        health, _ = get_json(args.base_url, "/health", headers={}, timeout=args.timeout)
         checks.append(("health", health.get("status") == "ok", f"status={health.get('status')}"))
 
-        ready = get_json(args.base_url, "/ready", headers={}, timeout=args.timeout)
+        ready, _ = get_json(args.base_url, "/ready", headers={}, timeout=args.timeout)
         checks.append(("ready", ready.get("status") == "ready", f"status={ready.get('status')}"))
+
+        version, version_request_id = get_json(args.base_url, "/version", headers=support_headers, timeout=args.timeout)
+        checks.append((
+            "version",
+            bool(version.get("app_version")),
+            f"version={version.get('app_version')}; request_id={version_request_id}",
+        ))
 
         unauthorized = requests.post(
             f"{args.base_url.rstrip('/')}/api/v1/query",
@@ -93,16 +114,20 @@ def main() -> int:
         )
         checks.append(("password_gate", unauthorized.status_code == 401, f"status={unauthorized.status_code}"))
 
-        policy = post_json(
+        policy, policy_request_id = post_json(
             args.base_url,
             "/api/v1/query",
             {"message": ROOT_QUERY},
             support_headers,
             args.timeout,
         )
-        checks.append(("policy_query", policy.get("route_type") == "policy_qa", f"route={policy.get('route_type')}"))
+        checks.append((
+            "policy_query",
+            policy.get("route_type") == "policy_qa",
+            f"route={policy.get('route_type')}; request_id={policy_request_id}",
+        ))
 
-        inventory = post_json(
+        inventory, inventory_request_id = post_json(
             args.base_url,
             "/api/v1/query",
             {"message": INVENTORY_QUERY},
@@ -112,10 +137,10 @@ def main() -> int:
         checks.append((
             "inventory_query",
             inventory.get("route_type") == "structured_lookup",
-            f"route={inventory.get('route_type')}",
+            f"route={inventory.get('route_type')}; request_id={inventory_request_id}",
         ))
 
-        incident = post_json(
+        incident, incident_request_id = post_json(
             args.base_url,
             "/api/v1/query",
             {"message": INCIDENT_QUERY},
@@ -125,11 +150,11 @@ def main() -> int:
         checks.append((
             "incident_query",
             incident.get("route_type") == "incident_summary",
-            f"route={incident.get('route_type')}",
+            f"route={incident.get('route_type')}; request_id={incident_request_id}",
         ))
 
         if not args.skip_approval_flow:
-            approval_request = post_json(
+            approval_request, approval_create_request_id = post_json(
                 args.base_url,
                 "/api/v1/escalations",
                 {
@@ -142,9 +167,13 @@ def main() -> int:
                 args.timeout,
             )
             approval_id = approval_request["data"]["approval"]["approval_id"]
-            checks.append(("approval_create", True, f"approval_id={approval_id}"))
+            checks.append((
+                "approval_create",
+                True,
+                f"approval_id={approval_id}; request_id={approval_create_request_id}",
+            ))
 
-            approval_status = get_json(
+            approval_status, approval_status_request_id = get_json(
                 args.base_url,
                 f"/api/v1/approvals/{approval_id}",
                 manager_headers,
@@ -153,10 +182,10 @@ def main() -> int:
             checks.append((
                 "approval_status",
                 approval_status["data"]["approval"]["status"] == "pending",
-                f"status={approval_status['data']['approval']['status']}",
+                f"status={approval_status['data']['approval']['status']}; request_id={approval_status_request_id}",
             ))
 
-            approval_decision = post_json(
+            approval_decision, approval_decision_request_id = post_json(
                 args.base_url,
                 f"/api/v1/approvals/{approval_id}/decision",
                 {
@@ -169,7 +198,7 @@ def main() -> int:
             checks.append((
                 "approval_decision",
                 approval_decision["data"]["approval"]["status"] == "rejected",
-                f"status={approval_decision['data']['approval']['status']}",
+                f"status={approval_decision['data']['approval']['status']}; request_id={approval_decision_request_id}",
             ))
 
     except Exception as exc:

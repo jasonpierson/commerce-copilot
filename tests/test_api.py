@@ -540,6 +540,16 @@ class FakeApprovalService:
 class ApiWorkflowTests(TestCase):
     client = TestClient(app)
 
+    def setUp(self) -> None:
+        self._original_demo_access_password = os.environ.get("DEMO_ACCESS_PASSWORD")
+        os.environ.pop("DEMO_ACCESS_PASSWORD", None)
+
+    def tearDown(self) -> None:
+        if self._original_demo_access_password is None:
+            os.environ.pop("DEMO_ACCESS_PASSWORD", None)
+        else:
+            os.environ["DEMO_ACCESS_PASSWORD"] = self._original_demo_access_password
+
     def test_query_inventory_returns_seeded_inventory_shape(self) -> None:
         with patch(
             "app.api.query_service.InventoryService.from_env",
