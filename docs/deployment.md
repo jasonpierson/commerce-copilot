@@ -63,6 +63,13 @@ Practical Koyeb pattern:
 - redeploy immediately after updating them
 - confirm the result at:
   - `/version`
+- source of truth for expected values:
+  - `koyeb.yaml`
+
+Current expectation:
+
+- release tag, `/version`, and hosted deploy metadata should line up
+- if `/version` still shows `unknown`, treat the deploy as not fully packaged yet
 
 ## Health Model
 
@@ -258,6 +265,9 @@ make smoke-remote-live
 - safety:
   - the workflow uses `--skip-approval-flow`
   - the shared password is never printed in logs
+- outputs:
+  - GitHub step summary
+  - `hosted-smoke-results` artifact with summary + JSON results
 
 ## Optional Custom Domain
 

@@ -103,6 +103,35 @@ Why:
   - likely cause:
     - missing or stale Actions secrets
 
+## Reviewer Troubleshooting Matrix
+
+- reviewer gets `401`
+  - check:
+    - current password was shared out-of-band
+    - username is `demo`
+- reviewer gets `429`
+  - check:
+    - recent request burst
+  - action:
+    - wait for retry window
+- reviewer reports `/ready` is unhealthy
+  - check:
+    - Koyeb env vars
+    - DB connectivity
+- reviewer says the password stopped working after rotation
+  - check:
+    - Koyeb secret updated
+    - GitHub Actions secret updated
+    - reviewer refreshed local client/UI
+- reviewer reports very slow first response
+  - likely:
+    - cold start
+  - action:
+    - retry with `--timeout 90`
+- reviewer needs help tracing a specific call
+  - ask for:
+    - `X-Request-Id`
+
 ## Where To Inspect Logs
 
 - hosted:

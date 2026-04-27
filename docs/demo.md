@@ -231,3 +231,36 @@ GCOP_API_BASE="https://harsh-juieta-jasons-org-14a2695f.koyeb.app/" make ui
 - Streamlit is a reviewer convenience layer, not the product frontend
 - approval notifications and orchestration are still stubbed
 - hosted smoke tests can create disposable approval records unless skipped
+
+## Troubleshooting
+
+- `401` on hosted endpoints
+  - likely cause:
+    - missing or stale demo password
+  - check:
+    - Basic auth username is `demo`
+    - password came from the maintainer
+- `429` from query or approval routes
+  - likely cause:
+    - lightweight rate limit tripped
+  - do:
+    - wait for the retry window
+    - retry after a short pause
+- `/ready` is failing
+  - likely cause:
+    - missing env var or DB connectivity issue
+  - do:
+    - check maintainer/deployment logs
+- password was rotated and access suddenly fails
+  - likely cause:
+    - old password cached in client/UI
+  - do:
+    - refresh local vars and retry
+- hosted requests feel slow on first load
+  - likely cause:
+    - Koyeb cold start
+  - do:
+    - retry with a longer timeout
+- need to trace a request
+  - use:
+    - `X-Request-Id` from the response headers

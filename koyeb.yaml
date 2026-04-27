@@ -32,6 +32,9 @@ service:
       APP_HOST: 0.0.0.0
       APP_PORT: "8000"
       DB_APP_SCHEMA: app_private
+      APP_VERSION: "0.1.0"
+      GIT_SHA: "<set-at-deploy>"
+      BUILD_TIMESTAMP: "<set-at-deploy>"
     secrets:
       - OPENAI_API_KEY
       - SUPABASE_DB_URL

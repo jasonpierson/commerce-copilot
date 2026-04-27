@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from typing import Any
@@ -21,6 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--password", default=os.getenv("DEMO_ACCESS_PASSWORD", "").strip())
     parser.add_argument("--timeout", type=int, default=30)
     parser.add_argument("--skip-approval-flow", action="store_true")
+    parser.add_argument("--summary-file", default="")
+    parser.add_argument("--artifact-file", default="")
     return parser.parse_args()
 
 
@@ -211,6 +214,47 @@ def main() -> int:
         if not ok:
             failures += 1
         print(f"- {marker} {name}: {detail}")
+
+    version_value = "unknown"
+    for name, ok, detail in checks:
+        if name == "version" and ok and detail.startswith("version="):
+            version_value = detail.split("version=", 1)[1].split(";", 1)[0]
+            break
+
+    summary_lines = [
+        "# Hosted Smoke Summary",
+        "",
+        f"- base URL: `{args.base_url}`",
+        f"- timeout: `{args.timeout}` seconds",
+        f"- approval flow skipped: `{args.skip_approval_flow}`",
+        f"- version: `{version_value}`",
+        f"- failing checks: `{failures}`",
+        "",
+        "## Check Results",
+    ]
+    for name, ok, detail in checks:
+        marker = "PASS" if ok else "FAIL"
+        summary_lines.append(f"- **{marker}** `{name}` — {detail}")
+
+    if args.summary_file:
+        with open(args.summary_file, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(summary_lines) + "\n")
+
+    if args.artifact_file:
+        artifact_payload = {
+            "base_url": args.base_url,
+            "timeout_seconds": args.timeout,
+            "skip_approval_flow": args.skip_approval_flow,
+            "version": version_value,
+            "failing_checks": failures,
+            "checks": [
+                {"name": name, "ok": ok, "detail": detail}
+                for name, ok, detail in checks
+            ],
+        }
+        with open(args.artifact_file, "w", encoding="utf-8") as handle:
+            json.dump(artifact_payload, handle, indent=2)
+            handle.write("\n")
 
     if failures:
         print(f"Smoke test failed with {failures} failing check(s).", file=sys.stderr)

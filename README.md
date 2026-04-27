@@ -10,6 +10,10 @@ Governed Commerce Operations Copilot is a live, password-protected hosted demo o
 Review this project in under 2 minutes:
 
 - status:
+  - ci:
+    - `CI workflow configured`
+  - hosted smoke:
+    - `GitHub Actions workflow configured`
   - hosted demo:
     - live
   - last hosted smoke:
@@ -50,6 +54,8 @@ Review this project in under 2 minutes:
   - contact the maintainer
   - receive the shared password out-of-band
   - use the repo-hosted URL plus the maintainer-shared password
+- review kit:
+  - `docs/review-kit.md`
 - local reviewer UI:
   - `make ui`
 - real vs demo-only:
@@ -62,10 +68,16 @@ For the hosted release runbook, see [`docs/release-checklist.md`](docs/release-c
 
 For the hosted-demo milestone note, see [`docs/releases/hosted-demo-v1.md`](docs/releases/hosted-demo-v1.md).
 
+For the reviewer handoff doc, see [`docs/review-kit.md`](docs/review-kit.md).
+
 For terminal-first review assets, see:
 
 - [`docs/api-review/README.md`](docs/api-review/README.md)
 - [`docs/api-review/curl-examples.md`](docs/api-review/curl-examples.md)
+
+For all published releases, see:
+
+- `https://github.com/jasonpierson/commerce-copilot/releases`
 
 Governed Commerce Operations Copilot is a Python/FastAPI prototype for a support-facing copilot that blends:
 
@@ -232,6 +244,7 @@ Use `X-Request-Id` from the response headers to correlate hosted logs.
   - `GET /version`
 - hosted regression check:
   - `.github/workflows/hosted-smoke.yml`
+  - publishes a human-readable summary and JSON artifact in GitHub Actions
 
 ## Current Status
 

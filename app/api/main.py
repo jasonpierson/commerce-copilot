@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import os
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from app.api.approval_router import router as approval_router
 from app.api.auth import (
@@ -136,6 +136,10 @@ def create_app() -> FastAPI:
             "app_env": metadata.app_env,
         }
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> Response:
+        return Response(status_code=204)
+
     @app.get("/", include_in_schema=False, response_model=None)
     def root(request: Request) -> JSONResponse | HTMLResponse:
         metadata = get_build_metadata()
@@ -172,24 +176,116 @@ def create_app() -> FastAPI:
             )
             html = f"""
             <html>
-              <head><title>{payload['name']}</title></head>
+              <head>
+                <title>{payload['name']}</title>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1" />
+                <style>
+                  :root {{
+                    color-scheme: light;
+                    --bg: #f7f4ec;
+                    --panel: #fffdf8;
+                    --ink: #1f2933;
+                    --muted: #5b6770;
+                    --accent: #0b6bcb;
+                    --border: #e5dfd0;
+                  }}
+                  body {{
+                    margin: 0;
+                    font-family: Georgia, "Times New Roman", serif;
+                    background: radial-gradient(circle at top, #fffaf0 0%, var(--bg) 55%, #f0eadc 100%);
+                    color: var(--ink);
+                  }}
+                  main {{
+                    max-width: 760px;
+                    margin: 48px auto;
+                    padding: 0 20px 48px;
+                  }}
+                  .panel {{
+                    background: var(--panel);
+                    border: 1px solid var(--border);
+                    border-radius: 18px;
+                    padding: 28px;
+                    box-shadow: 0 14px 40px rgba(31, 41, 51, 0.08);
+                  }}
+                  h1, h2 {{
+                    font-weight: 700;
+                    margin-bottom: 0.5rem;
+                  }}
+                  p, li {{
+                    font-size: 1rem;
+                    line-height: 1.6;
+                  }}
+                  .eyebrow {{
+                    display: inline-block;
+                    margin-bottom: 12px;
+                    padding: 4px 10px;
+                    border-radius: 999px;
+                    background: #e6f0fb;
+                    color: var(--accent);
+                    font-size: 0.86rem;
+                    letter-spacing: 0.02em;
+                  }}
+                  ul {{
+                    padding-left: 1.2rem;
+                  }}
+                  a {{
+                    color: var(--accent);
+                  }}
+                  .grid {{
+                    display: grid;
+                    gap: 16px;
+                  }}
+                  @media (min-width: 720px) {{
+                    .grid {{
+                      grid-template-columns: 1fr 1fr;
+                    }}
+                  }}
+                  .card {{
+                    border: 1px solid var(--border);
+                    border-radius: 14px;
+                    padding: 16px 18px;
+                    background: #fff;
+                  }}
+                  code {{
+                    background: #f3efe6;
+                    border-radius: 6px;
+                    padding: 2px 6px;
+                  }}
+                </style>
+              </head>
               <body>
-                <h1>{payload['name']}</h1>
-                <p>{payload['description']}</p>
-                <h2>Next steps</h2>
-                <ul>{items}</ul>
-                <h2>Authentication</h2>
-                <p>{payload['auth']['protected_routes']}</p>
-                <p>{payload['auth']['how_to_authenticate']}</p>
-                <h2>Build metadata</h2>
-                <ul>
-                  <li>Version: {payload['build']['app_version']}</li>
-                  <li>Git SHA: {payload['build']['git_sha']}</li>
-                  <li>Built at: {payload['build']['build_timestamp']}</li>
-                  <li>Environment: {payload['build']['app_env']}</li>
-                </ul>
-                <h2>Reviewer notes</h2>
-                <p>{payload['reviewer_notes']['streamlit']}</p>
+                <main>
+                  <section class="panel">
+                    <span class="eyebrow">Hosted reviewer entrypoint</span>
+                    <h1>{payload['name']}</h1>
+                    <p>{payload['description']}</p>
+                    <div class="grid">
+                      <div class="card">
+                        <h2>Next steps</h2>
+                        <ul>{items}</ul>
+                      </div>
+                      <div class="card">
+                        <h2>Authentication</h2>
+                        <p>{payload['auth']['protected_routes']}</p>
+                        <p>{payload['auth']['how_to_authenticate']}</p>
+                      </div>
+                      <div class="card">
+                        <h2>Build metadata</h2>
+                        <ul>
+                          <li>Version: <code>{payload['build']['app_version']}</code></li>
+                          <li>Git SHA: <code>{payload['build']['git_sha']}</code></li>
+                          <li>Built at: <code>{payload['build']['build_timestamp']}</code></li>
+                          <li>Environment: <code>{payload['build']['app_env']}</code></li>
+                        </ul>
+                      </div>
+                      <div class="card">
+                        <h2>Reviewer note</h2>
+                        <p>{payload['reviewer_notes']['streamlit']}</p>
+                      </div>
+                    </div>
+                  </section>
+                </main>
               </body>
             </html>
             """
