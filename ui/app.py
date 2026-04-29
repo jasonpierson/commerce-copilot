@@ -66,6 +66,18 @@ st.caption("Recommended deployment shape: host the API, keep Streamlit local-onl
 
 # Helper functions
 
+
+def _unique_citations(citations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen: set[str] = set()
+    unique: List[Dict[str, Any]] = []
+    for citation in citations:
+        doc_key = citation.get("doc_key") or ""
+        if doc_key in seen:
+            continue
+        seen.add(doc_key)
+        unique.append(citation)
+    return unique
+
 def _post(path: str, payload: Dict[str, Any], headers: Dict[str, str] | None = None) -> requests.Response:
     url = f"{api_base.rstrip('/')}{path}"
     return requests.post(url, json=payload, headers=headers or {}, timeout=30)
@@ -116,9 +128,10 @@ def _render_response(title: str, resp_json: Dict[str, Any]) -> None:
             st.json(incident)
     with cols[1]:
         citations = resp_json.get("data", {}).get("citations", [])
-        if citations:
+        unique_citations = _unique_citations(citations)
+        if unique_citations:
             st.markdown("**Citations**")
-            for c in citations:
+            for c in unique_citations:
                 st.write(f"- {c.get('title')} ({c.get('doc_key')})")
         st.markdown("**Meta**")
         st.json(resp_json.get("meta", {}))
