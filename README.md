@@ -17,7 +17,7 @@ Review this project in under 2 minutes:
   - hosted demo:
     - live
   - last hosted smoke:
-    - passed on `2026-04-24`
+    - passed on `2026-04-28`
   - release:
     - `v0.1.0`
   - auth:
