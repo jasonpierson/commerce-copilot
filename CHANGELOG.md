@@ -2,7 +2,7 @@
 
 This changelog tracks project evolution from the first commit, `c2ea3da` (`initial commit`), through the current working tree.
 
-## Unreleased
+## 0.2.0 - 2026-05-13
 
 ### Added
 - `docs/review-kit.md` for recruiter / hiring-manager / engineer sharing

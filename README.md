@@ -19,7 +19,7 @@ Review this project in under 2 minutes:
   - last hosted smoke:
     - passed on `2026-04-28`
   - release:
-    - `v0.1.0`
+    - `v0.2.0`
   - auth:
     - password-protected
   - data:
