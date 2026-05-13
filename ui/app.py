@@ -1,5 +1,7 @@
 import os
 import json
+import re
+import time
 from base64 import b64encode
 from typing import Any, Dict, List
 
@@ -96,11 +98,56 @@ def _auth_headers() -> Dict[str, str]:
     }
 
 
-def _render_response(title: str, resp_json: Dict[str, Any]) -> None:
+def _stream_text(text: str):
+    for line in text.splitlines(keepends=True):
+        yield line
+        time.sleep(0.015)
+
+
+def _format_answer_text(text: str) -> str:
+    normalized = " ".join((text or "").split())
+    if not normalized:
+        return ""
+
+    normalized = re.sub(
+        r"\s+(?=(Supporting context:|Choose [^:]+ when:|Before finalizing an outcome,|If an active incident may affect the case:))",
+        "\n\n",
+        normalized,
+    )
+    normalized = normalized.replace(": - ", ":\n- ")
+    normalized = normalized.replace(" - ", "\n- ")
+
+    blocks: List[str] = []
+    for raw_block in re.split(r"\n{2,}", normalized):
+        block = raw_block.strip()
+        if not block:
+            continue
+
+        if ":\n- " in block:
+            header, bullet_body = block.split(":\n", 1)
+            bullets = [item.strip()[2:].strip() for item in bullet_body.splitlines() if item.strip().startswith("- ")]
+            blocks.append(f"**{header.strip()}**")
+            blocks.extend(f"- {item}" for item in bullets if item)
+            continue
+
+        if block.endswith(":") and len(block) <= 160:
+            blocks.append(f"**{block[:-1].strip()}**")
+            continue
+
+        blocks.append(block)
+
+    return "\n\n".join(blocks)
+
+
+def _render_response(title: str, resp_json: Dict[str, Any], *, stream_answer: bool = False) -> None:
     st.subheader(title)
     cols = st.columns([2, 1])
     with cols[0]:
-        st.write(resp_json.get("data", {}).get("answer", ""))
+        answer = _format_answer_text(resp_json.get("data", {}).get("answer", ""))
+        if stream_answer and answer:
+            st.write_stream(_stream_text(answer))
+        else:
+            st.markdown(answer)
         links = resp_json.get("data", {}).get("links", [])
         if links:
             st.markdown("**Links**")
@@ -164,15 +211,24 @@ with query_tab:
             "user_role": role,
             "top_k": 5,
         }
-        r = _post("/api/v1/query", payload, headers=_auth_headers())
+        status_placeholder = st.empty()
+        with status_placeholder.container():
+            with st.status("Working on your query...", expanded=True) as status:
+                st.write("Routing the request and gathering context.")
+                with st.spinner("Copilot is thinking..."):
+                    r = _post("/api/v1/query", payload, headers=_auth_headers())
+                st.write("Response received. Rendering results.")
         try:
             resp_json = r.json()
         except Exception:
+            status.update(label="Query failed", state="error")
             st.error(f"Invalid response: {r.status_code}")
         else:
             if 200 <= r.status_code < 300:
-                _render_response("Query Response", resp_json)
+                status_placeholder.empty()
+                _render_response("Query Response", resp_json, stream_answer=True)
             else:
+                status.update(label="Query failed", state="error")
                 details = resp_json.get("error", {}).get("details", {})
                 st.error(f"{r.status_code} — {resp_json.get('error', {}).get('message')}")
                 if details.get("how_to_authenticate"):
