@@ -16,6 +16,20 @@ PASSWORD_HELP = (
 )
 
 st.set_page_config(page_title="CommerceOps Copilot — Demo UI", layout="wide")
+st.markdown(
+    """
+    <style>
+      #MainMenu,
+      header[data-testid="stHeader"],
+      [data-testid="stToolbar"],
+      .stAppToolbar,
+      [data-testid="stHeaderActionElements"] {
+        display: none;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 def _compose_demo_access_headers(password: str | None) -> Dict[str, str]:
