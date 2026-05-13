@@ -120,7 +120,7 @@ def _render_response(title: str, resp_json: Dict[str, Any]) -> None:
             st.json(approval)
         approvals = resp_json.get("data", {}).get("approvals", [])
         if approvals:
-            st.markdown("**Approvals**")
+            st.markdown("**Incident Escalation**")
             st.json(approvals)
         incident = resp_json.get("data", {}).get("incident")
         if incident:
@@ -140,7 +140,7 @@ def _render_response(title: str, resp_json: Dict[str, Any]) -> None:
 
 
 # Tabs
-query_tab, approvals_tab, traces_tab = st.tabs(["Query", "Approvals", "Traces"])
+query_tab, approvals_tab, traces_tab = st.tabs(["Query", "Incident Escalation", "Traces"])
 
 with query_tab:
     st.subheader("Unified Query")
