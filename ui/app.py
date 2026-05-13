@@ -140,7 +140,6 @@ def _format_answer_text(text: str) -> str:
 
 
 def _render_response(title: str, resp_json: Dict[str, Any], *, stream_answer: bool = False) -> None:
-    st.subheader(title)
     cols = st.columns([2, 1])
     with cols[0]:
         answer = _format_answer_text(resp_json.get("data", {}).get("answer", ""))
